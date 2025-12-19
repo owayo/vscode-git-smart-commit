@@ -1,0 +1,1 @@
+# vscode-git-smart-commit
