@@ -1,0 +1,10 @@
+.vscode/**
+src/**
+node_modules/**
+.gitignore
+tsconfig.json
+pnpm-lock.yaml
+versionCounter.cjs
+build-counter.txt
+*.vsix
+.DS_Store
