@@ -108,7 +108,7 @@ async function runGitScReword(
   outputChannel.show(true);
   outputChannel.appendLine(`\n${"=".repeat(50)}`);
   outputChannel.appendLine(
-    `[${new Date().toLocaleTimeString()}] Running: git-sc --reword ${hash}`,
+    `[${new Date().toLocaleTimeString()}] Running: git-sc --reword ${hash} -y`,
   );
   outputChannel.appendLine(`Working directory: ${workspaceRoot}`);
   outputChannel.appendLine("=".repeat(50));
@@ -123,7 +123,7 @@ async function runGitScReword(
       return new Promise<void>((resolve, reject) => {
         progress.report({ message: `Rewording commit ${hash}...` });
 
-        const process = spawn("git-sc", ["--reword", hash], {
+        const process = spawn("git-sc", ["--reword", hash, "-y"], {
           cwd: workspaceRoot,
           shell: true,
           env: { ...globalThis.process.env, FORCE_COLOR: "0" },
