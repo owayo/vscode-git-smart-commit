@@ -94,21 +94,21 @@ export async function rewordCommit(
     return;
   }
 
-  // Run git-sc --reword
-  await runGitScReword(outputChannel, workspaceRoot, commit.index);
+  // Run git-sc --reword with commit hash
+  await runGitScReword(outputChannel, workspaceRoot, commit.hash);
 }
 
 async function runGitScReword(
   outputChannel: vscode.OutputChannel,
   workspaceRoot: string,
-  n: number,
+  hash: string,
 ): Promise<void> {
   const { spawn } = await import("child_process");
 
   outputChannel.show(true);
   outputChannel.appendLine(`\n${"=".repeat(50)}`);
   outputChannel.appendLine(
-    `[${new Date().toLocaleTimeString()}] Running: git-sc --reword ${n}`,
+    `[${new Date().toLocaleTimeString()}] Running: git-sc --reword ${hash}`,
   );
   outputChannel.appendLine(`Working directory: ${workspaceRoot}`);
   outputChannel.appendLine("=".repeat(50));
@@ -121,9 +121,9 @@ async function runGitScReword(
     },
     async (progress, token) => {
       return new Promise<void>((resolve, reject) => {
-        progress.report({ message: `Rewording commit ${n} ago...` });
+        progress.report({ message: `Rewording commit ${hash}...` });
 
-        const process = spawn("git-sc", ["--reword", String(n)], {
+        const process = spawn("git-sc", ["--reword", hash], {
           cwd: workspaceRoot,
           shell: true,
           env: { ...globalThis.process.env, FORCE_COLOR: "0" },
