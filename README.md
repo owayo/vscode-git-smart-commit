@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="icon.png" width="128" alt="Git-SC">
+  <img src="icon.png" width="128" alt="git-sc">
 </p>
 
 <h1 align="center">git-sc (Smart Commit) - VS Code 拡張</h1>
