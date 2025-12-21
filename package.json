@@ -2,7 +2,7 @@
   "name": "vscode-git-smart-commit",
   "displayName": "git-sc (Smart Commit)",
   "description": "Run git-sc command with one click - AI-powered smart commit message generator",
-  "version": "2025.12.109",
+  "version": "25.12.110",
   "publisher": "owayo",
   "license": "MIT",
   "icon": "icon.png",
