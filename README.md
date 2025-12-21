@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="icon.png" width="128" alt="Git Smart Commit">
+  <img src="icon.png" width="128" alt="Git-SC">
 </p>
 
-<h1 align="center">Git-SC (Smart Commit)</h1>
+<h1 align="center">Git-SC (Smart Commit) - VS Code 拡張</h1>
 
 <p align="center">
-  AI-powered smart commit message generator for VS Code
+  AI でコミットメッセージを自動生成する VS Code 拡張機能
 </p>
 
 <p align="center">
@@ -25,27 +25,27 @@
 
 ---
 
-Run [git-sc](https://github.com/owayo/git-smart-commit) command with one click from VS Code. Generate meaningful commit messages using coding agents (Gemini CLI, Codex CLI, or Claude Code).
+[git-sc](https://github.com/owayo/git-smart-commit) コマンドを VS Code からワンクリックで実行できる拡張機能です。Gemini CLI、Codex CLI、Claude Code などのコーディングエージェントを使って、意味のあるコミットメッセージを自動生成します。
 
 <!--
-## Demo
+## デモ
 
 <p align="center">
-  <img src="docs/images/demo.gif" width="600" alt="Demo">
+  <img src="docs/images/demo.gif" width="600" alt="デモ">
 </p>
 -->
 
-## Features
+## 機能
 
-- **One-Click Commit** — Status bar button to instantly run `git-sc`
-- **SCM Integration** — Submenu in Source Control panel with all commit options
-- **Multiple Modes** — Standard, with body (`-b`), auto confirm (`-y`), or combined
-- **Reword Commits** — Interactively reword past commit messages
-- **Output Channel** — View git-sc output directly in VS Code
+- **ワンクリックコミット** — ステータスバーのボタンで即座に `git-sc` を実行
+- **ソース管理パネル統合** — SCM パネルのサブメニューからすべてのコミットオプションにアクセス
+- **複数モード対応** — 標準、本文付き (`-b`)、自動確認 (`-y`)、またはその組み合わせ
+- **コミットメッセージ書き換え** — 過去のコミットメッセージを対話的に修正
+- **出力チャンネル** — git-sc の出力を VS Code 内で直接確認
 
-## Requirements
+## 動作要件
 
-Install [git-sc](https://github.com/owayo/git-smart-commit) CLI and ensure it's in your PATH:
+[git-sc](https://github.com/owayo/git-smart-commit) CLI をインストールし、PATH に追加してください：
 
 ```bash
 # macOS (Apple Silicon)
@@ -61,50 +61,50 @@ curl -L https://github.com/owayo/git-smart-commit/releases/latest/download/git-s
 sudo mv git-sc /usr/local/bin/
 ```
 
-## Installation
+## インストール
 
-### From VS Code Marketplace
+### VS Code Marketplace から
 
-1. Open VS Code
-2. Go to Extensions (`Cmd+Shift+X` / `Ctrl+Shift+X`)
-3. Search for "Git Smart Commit"
-4. Click Install
+1. VS Code を開く
+2. 拡張機能パネルを開く (`Cmd+Shift+X` / `Ctrl+Shift+X`)
+3. "Git Smart Commit" を検索
+4. インストールをクリック
 
-Or install from command line:
+または、コマンドラインから：
 
 ```bash
 code --install-extension owayo.vscode-git-smart-commit
 ```
 
-### From VSIX
+### VSIX ファイルから
 
-Download the latest `.vsix` from [Releases](https://github.com/owayo/vscode-git-smart-commit/releases) and install:
+[Releases](https://github.com/owayo/vscode-git-smart-commit/releases) から最新の `.vsix` をダウンロードしてインストール：
 
 ```bash
 code --install-extension vscode-git-smart-commit-*.vsix
 ```
 
-## Usage
+## 使い方
 
-### Status Bar
+### ステータスバー
 
-Click the `git-sc` button in the status bar to stage all changes and commit with auto-confirm.
+ステータスバーの `git-sc` ボタンをクリックすると、すべての変更をステージして自動確認でコミットします。
 
-### Source Control Panel
+### ソース管理パネル
 
-Click the ✨ (sparkle) icon in the SCM title bar to open the submenu:
+SCM タイトルバーの ✨ (スパークル) アイコンをクリックしてサブメニューを開きます：
 
-| Command | Description |
-|---------|-------------|
-| Stage All & Commit (`-a -y`) | Stage all changes and commit |
-| Stage All & Commit with Body (`-a -b -y`) | Stage all and commit with detailed body |
-| Commit (`-y`) | Commit staged changes only |
-| Commit with Body (`-b -y`) | Commit staged with detailed body |
-| Reword Commit | Select and reword a past commit |
+| コマンド | 説明 |
+|---------|------|
+| Stage All & Commit (`-a -y`) | すべての変更をステージしてコミット |
+| Stage All & Commit with Body (`-a -b -y`) | すべての変更をステージして本文付きでコミット |
+| Commit (`-y`) | ステージ済みの変更のみコミット |
+| Commit with Body (`-b -y`) | ステージ済みの変更を本文付きでコミット |
+| Reword Commit | 過去のコミットメッセージを選択して書き換え |
 
-### Command Palette
+### コマンドパレット
 
-Open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) and type "Git Smart Commit":
+コマンドパレット (`Cmd+Shift+P` / `Ctrl+Shift+P`) を開いて "Git Smart Commit" と入力：
 
 - `Git Smart Commit: Stage All & Commit (-a -y)`
 - `Git Smart Commit: Stage All & Commit with Body (-a -b -y)`
@@ -112,54 +112,54 @@ Open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) and type "Git Smart Commit
 - `Git Smart Commit: Commit with Body (-b -y)`
 - `Git Smart Commit: Reword Commit`
 
-### Keyboard Shortcuts
+### キーボードショートカット
 
-| Command | Windows / Linux | macOS |
+| コマンド | Windows / Linux | macOS |
 |---------|-----------------|-------|
-| Stage All & Commit | `Ctrl+Shift+G C` | `Cmd+Shift+G C` |
-| Reword Commit | `Ctrl+Shift+G R` | `Cmd+Shift+G R` |
+| すべてステージしてコミット | `Ctrl+Shift+G C` | `Cmd+Shift+G C` |
+| コミットメッセージ書き換え | `Ctrl+Shift+G R` | `Cmd+Shift+G R` |
 
-## Configuration
+## 設定
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `gitSmartCommit.autoConfirm` | `false` | Automatically confirm commits without prompting (`-y` flag) |
-| `gitSmartCommit.includeBody` | `false` | Generate detailed commit messages with body (`-b` flag) |
-| `gitSmartCommit.showStatusBarButton` | `true` | Show git-sc button in status bar |
+| 設定項目 | デフォルト | 説明 |
+|---------|-----------|------|
+| `gitSmartCommit.autoConfirm` | `false` | 確認プロンプトなしで自動的にコミット (`-y` フラグ) |
+| `gitSmartCommit.includeBody` | `false` | 本文付きの詳細なコミットメッセージを生成 (`-b` フラグ) |
+| `gitSmartCommit.showStatusBarButton` | `true` | ステータスバーに git-sc ボタンを表示 |
 
-## Development
+## 開発
 
 ```bash
-# Clone the repository
+# リポジトリをクローン
 git clone https://github.com/owayo/vscode-git-smart-commit.git
 cd vscode-git-smart-commit
 
-# Install dependencies
+# 依存関係をインストール
 pnpm install
 
-# Compile
+# コンパイル
 pnpm run compile
 
-# Watch mode
+# ウォッチモード
 pnpm run watch
 ```
 
-### Debugging
+### デバッグ
 
-1. Press `F5` to launch Extension Development Host
-2. Make changes to the code
-3. Press `Cmd+R` (macOS) / `Ctrl+R` (Windows/Linux) in the Extension Development Host to reload
+1. `F5` を押して Extension Development Host を起動
+2. コードを変更
+3. Extension Development Host で `Cmd+R` (macOS) / `Ctrl+R` (Windows/Linux) を押してリロード
 
-### Packaging
+### パッケージング
 
 ```bash
 pnpm run package
 ```
 
-## Contributing
+## コントリビュート
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+コントリビュートを歓迎します！Pull Request をお気軽にお送りください。
 
-## License
+## ライセンス
 
 [MIT](LICENSE) © owayo
