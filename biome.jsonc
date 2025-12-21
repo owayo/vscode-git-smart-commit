@@ -1,0 +1,43 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.4.4/schema.json",
+	"vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+	"files": { "includes": ["**", "!!**/dist"] },
+	"formatter": { "enabled": true, "indentStyle": "tab" },
+	"linter": {
+		"enabled": true,
+		"rules": { "recommended": false },
+		"includes": ["**", "!dist/**", "!out/**", "!node_modules/**"]
+	},
+	"javascript": { "formatter": { "quoteStyle": "double" } },
+	"overrides": [
+		{
+			"includes": ["src/**/*.ts"],
+			"javascript": { "globals": [] },
+			"linter": {
+				"rules": {
+					"complexity": { "noUselessTypeConstraint": "error" },
+					"correctness": { "noUnusedVariables": "warn" },
+					"style": {
+						"noCommonJs": "error",
+						"noNamespace": "error",
+						"useArrayLiterals": "error",
+						"useAsConstAssertion": "error"
+					},
+					"suspicious": {
+						"noExplicitAny": "error",
+						"noExtraNonNullAssertion": "error",
+						"noMisleadingInstantiator": "error",
+						"noNonNullAssertedOptionalChain": "error",
+						"noUnsafeDeclarationMerging": "error",
+						"noUnusedExpressions": "off",
+						"useNamespaceKeyword": "error"
+					}
+				}
+			}
+		}
+	],
+	"assist": {
+		"enabled": true,
+		"actions": { "source": { "organizeImports": "on" } }
+	}
+}
