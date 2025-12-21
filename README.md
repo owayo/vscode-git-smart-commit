@@ -142,6 +142,12 @@ pnpm run compile
 
 # ウォッチモード
 pnpm run watch
+
+# リント
+pnpm run lint
+
+# テスト
+pnpm run test
 ```
 
 ### デバッグ
@@ -150,11 +156,9 @@ pnpm run watch
 2. コードを変更
 3. Extension Development Host で `Cmd+R` (macOS) / `Ctrl+R` (Windows/Linux) を押してリロード
 
-### パッケージング
+### リリース
 
-```bash
-pnpm run package
-```
+GitHub Actions の「Run workflow」から実行。バージョン更新・ビルド・Marketplace 公開が自動化されています。
 
 ## コントリビュート
 
