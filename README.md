@@ -2,7 +2,7 @@
   <img src="icon.png" width="128" alt="Git-SC">
 </p>
 
-<h1 align="center">Git-SC (Smart Commit) - VS Code 拡張</h1>
+<h1 align="center">git-sc (Smart Commit) - VS Code 拡張</h1>
 
 <p align="center">
   AI でコミットメッセージを自動生成する VS Code 拡張機能
