@@ -1,0 +1,121 @@
+name: Release VS Code Extension
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (skip actual release)"
+        type: boolean
+        default: false
+      pre_release:
+        description: "Publish as pre-release"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release Extension
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Bump version
+        id: bump
+        run: |
+          # Use 2-digit year (YY) format
+          YEAR=$(date +%y)
+          MONTH=$(date +%-m)
+
+          CURRENT=$(grep '"version"' package.json | head -1 | sed 's/.*"\([0-9][^"]*\)".*/\1/')
+          echo "Current version: ${CURRENT}"
+
+          if echo "${CURRENT}" | grep -qE '^[0-9]{2,4}\.[0-9]{1,2}\.[0-9]+$'; then
+            OLD_YEAR=$(echo "${CURRENT}" | cut -d. -f1)
+            OLD_MONTH=$(echo "${CURRENT}" | cut -d. -f2)
+            OLD_COUNTER=$(echo "${CURRENT}" | cut -d. -f3)
+            OLD_YEAR_2DIGIT=$(echo "${OLD_YEAR}" | sed 's/^20//')
+            if [ "${OLD_YEAR_2DIGIT}" = "${YEAR}" ] && [ "${OLD_MONTH}" = "${MONTH}" ]; then
+              NEW_COUNTER=$((OLD_COUNTER + 1))
+            else
+              NEW_COUNTER=100
+            fi
+          else
+            NEW_COUNTER=100
+          fi
+
+          NEW_VERSION="${YEAR}.${MONTH}.${NEW_COUNTER}"
+          echo "New version: ${NEW_VERSION}"
+
+          # Update package.json
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${NEW_VERSION}\"/" package.json
+
+          echo "version=${NEW_VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=v${NEW_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Commit and tag
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git add package.json
+          git commit -m "release: v${{ steps.bump.outputs.version }}"
+          git tag -a "v${{ steps.bump.outputs.version }}" -m "Release v${{ steps.bump.outputs.version }}"
+          git push origin HEAD "v${{ steps.bump.outputs.version }}"
+
+      - name: Dry run info
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "🧪 Dry run mode - skipping commit and publish"
+          echo "Would release: ${{ steps.bump.outputs.tag }}"
+
+      - name: Build extension
+        run: pnpm run compile
+
+      - name: Package extension
+        if: ${{ !inputs.dry_run }}
+        run: pnpm exec vsce package --no-dependencies
+
+      - name: Publish to Visual Studio Marketplace
+        if: ${{ !inputs.dry_run }}
+        run: pnpm exec vsce publish --no-dependencies -p ${{ secrets.VS_MARKETPLACE_TOKEN }} ${{ inputs.pre_release && '--pre-release' || '' }}
+
+      - name: Get VSIX filename
+        if: ${{ !inputs.dry_run }}
+        id: vsix
+        run: echo "filename=$(ls *.vsix)" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        if: ${{ !inputs.dry_run }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.bump.outputs.version }}
+          name: v${{ steps.bump.outputs.version }}
+          draft: false
+          prerelease: ${{ inputs.pre_release }}
+          files: ${{ steps.vsix.outputs.filename }}
+          generate_release_notes: true
+
+      - name: Release summary
+        if: ${{ !inputs.dry_run }}
+        run: echo "🚀 Released v${{ steps.bump.outputs.version }} to Visual Studio Marketplace"
