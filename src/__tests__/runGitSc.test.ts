@@ -243,6 +243,32 @@ describe("runGitSc", () => {
 		);
 	});
 
+	it("should show installation link on Windows command-not-found message", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+		mockShowErrorMessage.mockResolvedValue("View Installation");
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => {
+			proc.stderr?.emit(
+				"data",
+				Buffer.from(
+					"'git-sc' is not recognized as an internal or external command",
+				),
+			);
+			proc.__emit("close", 1);
+		}, 10);
+
+		await expect(promise).rejects.toThrow();
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"git-sc command not found. Please install it and ensure it's in your PATH.",
+			"View Installation",
+		);
+	});
+
 	it("should handle process spawn error (ENOENT)", async () => {
 		const proc = createMockProcess();
 		mockSpawn.mockReturnValue(proc);
@@ -296,5 +322,123 @@ describe("runGitSc", () => {
 			[],
 			expect.objectContaining({ shell: true }),
 		);
+	});
+
+	it("should use workspace config flags when options are omitted", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+		const vscode = await import("vscode");
+
+		vi.mocked(vscode.workspace.getConfiguration).mockReturnValueOnce({
+			get: vi.fn((key: string, defaultValue: unknown) => {
+				if (key === "includeBody" || key === "autoConfirm") {
+					return true;
+				}
+				return defaultValue;
+			}),
+		} as never);
+
+		const promise = runGitSc(mockOutputChannel as never);
+
+		setTimeout(() => proc.__emit("close", 0), 10);
+		await promise;
+
+		expect(mockSpawn).toHaveBeenCalledWith(
+			"git-sc",
+			["-b", "-y"],
+			expect.objectContaining({ shell: true }),
+		);
+	});
+
+	it("should prioritize explicit options over workspace config", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+		const vscode = await import("vscode");
+
+		vi.mocked(vscode.workspace.getConfiguration).mockReturnValueOnce({
+			get: vi.fn(() => true),
+		} as never);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			includeBody: false,
+			autoConfirm: false,
+		});
+
+		setTimeout(() => proc.__emit("close", 0), 10);
+		await promise;
+
+		expect(mockSpawn).toHaveBeenCalledWith(
+			"git-sc",
+			[],
+			expect.objectContaining({ shell: true }),
+		);
+	});
+
+	it("should handle non-ENOENT spawn error", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => proc.__emit("error", new Error("spawn EACCES")), 10);
+
+		await expect(promise).rejects.toThrow("EACCES");
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"Failed to run git-sc: spawn EACCES",
+		);
+	});
+
+	it("should set FORCE_COLOR=0 in process env", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => proc.__emit("close", 0), 10);
+		await promise;
+
+		expect(mockSpawn).toHaveBeenCalledWith(
+			"git-sc",
+			expect.any(Array),
+			expect.objectContaining({
+				env: expect.objectContaining({ FORCE_COLOR: "0" }),
+			}),
+		);
+	});
+
+	it("should not show error when cancelled", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		mockWithProgress.mockImplementationOnce(
+			async (
+				_options: unknown,
+				callback: (progress: unknown, token: unknown) => Promise<void>,
+			) => {
+				let cancelHandler: (() => void) | undefined;
+				const progress = { report: vi.fn() };
+				const token = {
+					onCancellationRequested: vi.fn((handler: () => void) => {
+						cancelHandler = handler;
+					}),
+					isCancellationRequested: false,
+				};
+
+				const progressPromise = callback(progress, token);
+				cancelHandler?.();
+				setTimeout(() => proc.__emit("close", null), 10);
+				return progressPromise;
+			},
+		);
+
+		await expect(
+			runGitSc(mockOutputChannel as never, { autoConfirm: true }),
+		).resolves.toBeUndefined();
+		expect(proc.kill).toHaveBeenCalled();
+		expect(mockShowErrorMessage).not.toHaveBeenCalled();
 	});
 });

@@ -1,4 +1,7 @@
-import { execSync } from "child_process";
+import type { ChildProcess } from "node:child_process";
+import { EventEmitter } from "node:events";
+import { Readable } from "node:stream";
+import { execFileSync } from "child_process";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	type CommitInfo,
@@ -6,14 +9,17 @@ import {
 	rewordCommit,
 } from "../commands/rewordCommit";
 
+const mockSpawn = vi.fn();
 const mockShowErrorMessage = vi.fn();
 const mockShowWarningMessage = vi.fn();
 const mockShowQuickPick = vi.fn();
+const mockShowInformationMessage = vi.fn();
 const mockWithProgress = vi.fn();
+const mockExecuteCommand = vi.fn();
 
 vi.mock("child_process", () => ({
-	execSync: vi.fn(),
-	spawn: vi.fn(),
+	execFileSync: vi.fn(),
+	spawn: (...args: unknown[]) => mockSpawn(...args),
 }));
 
 vi.mock("vscode", () => ({
@@ -21,7 +27,8 @@ vi.mock("vscode", () => ({
 		showErrorMessage: (...args: unknown[]) => mockShowErrorMessage(...args),
 		showWarningMessage: (...args: unknown[]) => mockShowWarningMessage(...args),
 		showQuickPick: (...args: unknown[]) => mockShowQuickPick(...args),
-		showInformationMessage: vi.fn(),
+		showInformationMessage: (...args: unknown[]) =>
+			mockShowInformationMessage(...args),
 		withProgress: (...args: unknown[]) => mockWithProgress(...args),
 		createOutputChannel: vi.fn(() => ({
 			show: vi.fn(),
@@ -44,7 +51,7 @@ vi.mock("vscode", () => ({
 	},
 	commands: {
 		registerCommand: vi.fn(),
-		executeCommand: vi.fn(),
+		executeCommand: (...args: unknown[]) => mockExecuteCommand(...args),
 	},
 	StatusBarAlignment: { Left: 1, Right: 2 },
 	ProgressLocation: { Notification: 15 },
@@ -52,12 +59,31 @@ vi.mock("vscode", () => ({
 	env: { openExternal: vi.fn() },
 }));
 
-const mockExecSync = vi.mocked(execSync);
+const mockExecFileSync = vi.mocked(execFileSync);
+
+function createMockProcess(): ChildProcess & {
+	__emit: (event: string, ...args: unknown[]) => void;
+} {
+	const proc = new EventEmitter() as ChildProcess & {
+		__emit: (event: string, ...args: unknown[]) => void;
+	};
+	proc.stdout = new Readable({
+		read() {},
+	}) as unknown as ChildProcess["stdout"];
+	proc.stderr = new Readable({
+		read() {},
+	}) as unknown as ChildProcess["stderr"];
+	proc.kill = vi.fn();
+	proc.__emit = (event: string, ...args: unknown[]) => {
+		proc.emit(event, ...args);
+	};
+	return proc;
+}
 
 describe("getRecentCommits", () => {
 	it("should parse git log output correctly", () => {
-		mockExecSync.mockReturnValue(
-			"abc1234|feat: add new feature|2 hours ago|John Doe\ndef5678|fix: resolve bug|1 day ago|Jane Smith\n",
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x1ffeat: add new feature\x1f2 hours ago\x1fJohn Doe\x1edef5678\x1ffix: resolve bug\x1f1 day ago\x1fJane Smith\x1e",
 		);
 
 		const commits = getRecentCommits("/workspace");
@@ -79,62 +105,128 @@ describe("getRecentCommits", () => {
 		});
 	});
 
-	it("should return empty array on error", () => {
-		mockExecSync.mockImplementation(() => {
+	it("should throw on git log error", () => {
+		mockExecFileSync.mockImplementation(() => {
 			throw new Error("not a git repository");
 		});
 
-		const commits = getRecentCommits("/not-a-repo");
-		expect(commits).toEqual([]);
+		expect(() => getRecentCommits("/not-a-repo")).toThrow(
+			"not a git repository",
+		);
 	});
 
 	it("should return empty array for empty output", () => {
-		mockExecSync.mockReturnValue("");
+		mockExecFileSync.mockReturnValue("");
 
 		const commits = getRecentCommits("/workspace");
 		expect(commits).toEqual([]);
 	});
 
 	it("should respect the limit parameter", () => {
-		mockExecSync.mockReturnValue("abc|msg|1h ago|Author\n");
+		mockExecFileSync.mockReturnValue("abc\x1fmsg\x1f1h ago\x1fAuthor\x1e");
 
 		getRecentCommits("/workspace", 5);
 
-		expect(mockExecSync).toHaveBeenCalledWith(
-			'git log --oneline --format="%h|%s|%cr|%an" -n 5',
+		expect(mockExecFileSync).toHaveBeenCalledWith(
+			"git",
+			["log", "--format=%h\x1f%s\x1f%cr\x1f%an\x1e", "-n", "5"],
 			{ cwd: "/workspace", encoding: "utf-8" },
 		);
 	});
 
 	it("should use default limit of 10", () => {
-		mockExecSync.mockReturnValue("abc|msg|1h ago|Author\n");
+		mockExecFileSync.mockReturnValue("abc\x1fmsg\x1f1h ago\x1fAuthor\x1e");
 
 		getRecentCommits("/workspace");
 
-		expect(mockExecSync).toHaveBeenCalledWith(
-			'git log --oneline --format="%h|%s|%cr|%an" -n 10',
+		expect(mockExecFileSync).toHaveBeenCalledWith(
+			"git",
+			["log", "--format=%h\x1f%s\x1f%cr\x1f%an\x1e", "-n", "10"],
 			{ cwd: "/workspace", encoding: "utf-8" },
 		);
 	});
 
-	it("should filter empty lines", () => {
-		mockExecSync.mockReturnValue(
-			"abc|msg1|1h ago|Author\n\ndef|msg2|2h ago|Author\n",
+	it("should fallback to default limit when non-positive limit is passed", () => {
+		mockExecFileSync.mockReturnValue("abc\x1fmsg\x1f1h ago\x1fAuthor\x1e");
+
+		getRecentCommits("/workspace", 0);
+
+		expect(mockExecFileSync).toHaveBeenCalledWith(
+			"git",
+			["log", "--format=%h\x1f%s\x1f%cr\x1f%an\x1e", "-n", "10"],
+			{ cwd: "/workspace", encoding: "utf-8" },
+		);
+	});
+
+	it("should keep commit subjects that include pipes", () => {
+		mockExecFileSync.mockReturnValue(
+			"abc\x1ffeat: support A|B|C\x1f1h ago\x1fAuthor\x1e",
 		);
 
 		const commits = getRecentCommits("/workspace");
-		expect(commits).toHaveLength(2);
+		expect(commits).toHaveLength(1);
+		expect(commits[0].message).toBe("feat: support A|B|C");
 	});
 
 	it("should use 1-based index for git-sc --reword", () => {
-		mockExecSync.mockReturnValue(
-			"abc|first|1h ago|A\ndef|second|2h ago|B\nghi|third|3h ago|C\n",
+		mockExecFileSync.mockReturnValue(
+			"abc\x1ffirst\x1f1h ago\x1fA\x1edef\x1fsecond\x1f2h ago\x1fB\x1eghi\x1fthird\x1f3h ago\x1fC\x1e",
 		);
 
 		const commits = getRecentCommits("/workspace");
 		expect(commits[0].index).toBe(1);
 		expect(commits[1].index).toBe(2);
 		expect(commits[2].index).toBe(3);
+	});
+
+	it("should fallback to default limit when negative limit is passed", () => {
+		mockExecFileSync.mockReturnValue("abc\x1fmsg\x1f1h ago\x1fAuthor\x1e");
+
+		getRecentCommits("/workspace", -5);
+
+		expect(mockExecFileSync).toHaveBeenCalledWith(
+			"git",
+			["log", "--format=%h\x1f%s\x1f%cr\x1f%an\x1e", "-n", "10"],
+			{ cwd: "/workspace", encoding: "utf-8" },
+		);
+	});
+
+	it("should fallback to default limit when float is passed", () => {
+		mockExecFileSync.mockReturnValue("abc\x1fmsg\x1f1h ago\x1fAuthor\x1e");
+
+		getRecentCommits("/workspace", 3.5);
+
+		expect(mockExecFileSync).toHaveBeenCalledWith(
+			"git",
+			["log", "--format=%h\x1f%s\x1f%cr\x1f%an\x1e", "-n", "10"],
+			{ cwd: "/workspace", encoding: "utf-8" },
+		);
+	});
+
+	it("should fallback to default limit when NaN is passed", () => {
+		mockExecFileSync.mockReturnValue("abc\x1fmsg\x1f1h ago\x1fAuthor\x1e");
+
+		getRecentCommits("/workspace", Number.NaN);
+
+		expect(mockExecFileSync).toHaveBeenCalledWith(
+			"git",
+			["log", "--format=%h\x1f%s\x1f%cr\x1f%an\x1e", "-n", "10"],
+			{ cwd: "/workspace", encoding: "utf-8" },
+		);
+	});
+
+	it("should handle commit with empty fields gracefully", () => {
+		mockExecFileSync.mockReturnValue("\x1f\x1f\x1f\x1e");
+
+		const commits = getRecentCommits("/workspace");
+		expect(commits).toHaveLength(1);
+		expect(commits[0]).toEqual({
+			index: 1,
+			hash: "",
+			message: "",
+			date: "",
+			author: "",
+		});
 	});
 });
 
@@ -148,6 +240,19 @@ describe("rewordCommit", () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mockWithProgress.mockImplementation(
+			async (
+				_options: unknown,
+				callback: (progress: unknown, token: unknown) => unknown,
+			) => {
+				const progress = { report: vi.fn() };
+				const token = {
+					onCancellationRequested: vi.fn(),
+					isCancellationRequested: false,
+				};
+				return callback(progress, token);
+			},
+		);
 		mockOutputChannel = {
 			show: vi.fn(),
 			appendLine: vi.fn(),
@@ -178,7 +283,7 @@ describe("rewordCommit", () => {
 	});
 
 	it("should show warning when no commits found", async () => {
-		mockExecSync.mockReturnValue("");
+		mockExecFileSync.mockReturnValue("");
 
 		await rewordCommit(mockOutputChannel as never);
 
@@ -187,8 +292,56 @@ describe("rewordCommit", () => {
 		);
 	});
 
+	it("should show git-not-found error when loading commits fails with ENOENT", async () => {
+		mockExecFileSync.mockImplementation(() => {
+			throw new Error("spawn git ENOENT");
+		});
+
+		await rewordCommit(mockOutputChannel as never);
+
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"Git command not found. Please install Git and ensure it's in your PATH.",
+		);
+		expect(mockShowWarningMessage).not.toHaveBeenCalled();
+		expect(mockShowQuickPick).not.toHaveBeenCalled();
+		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
+			"\n❌ Failed to load commit history: spawn git ENOENT",
+		);
+	});
+
+	it("should show generic history-load error when git log fails", async () => {
+		mockExecFileSync.mockImplementation(() => {
+			throw new Error("fatal: not a git repository");
+		});
+
+		await rewordCommit(mockOutputChannel as never);
+
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"Failed to load commit history: fatal: not a git repository",
+		);
+		expect(mockShowWarningMessage).not.toHaveBeenCalled();
+		expect(mockShowQuickPick).not.toHaveBeenCalled();
+	});
+
+	it("should show 0 commit(s) ago for the latest commit in selection", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc\x1ffeat: latest\x1f1h ago\x1fAuthor\x1e",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) => {
+			const firstItem = items[0] as { detail?: string };
+			expect(firstItem.detail).toContain("0 commit(s) ago");
+			return Promise.resolve(undefined);
+		});
+
+		await rewordCommit(mockOutputChannel as never);
+
+		expect(mockShowQuickPick).toHaveBeenCalledTimes(1);
+	});
+
 	it("should return when user cancels commit selection", async () => {
-		mockExecSync.mockReturnValue("abc|feat: test|1h ago|Author\n");
+		mockExecFileSync.mockReturnValue(
+			"abc\x1ffeat: test\x1f1h ago\x1fAuthor\x1e",
+		);
 		mockShowQuickPick.mockResolvedValueOnce(undefined);
 
 		await rewordCommit(mockOutputChannel as never);
@@ -198,7 +351,9 @@ describe("rewordCommit", () => {
 	});
 
 	it("should return when user declines confirmation", async () => {
-		mockExecSync.mockReturnValue("abc|feat: test|1h ago|Author\n");
+		mockExecFileSync.mockReturnValue(
+			"abc\x1ffeat: test\x1f1h ago\x1fAuthor\x1e",
+		);
 		// First QuickPick: return the first item from the passed items array
 		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
 			Promise.resolve(items[0]),
@@ -210,5 +365,150 @@ describe("rewordCommit", () => {
 
 		expect(mockShowQuickPick).toHaveBeenCalledTimes(2);
 		expect(mockWithProgress).not.toHaveBeenCalled();
+	});
+
+	it("should run git-sc reword after selection and confirmation", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x1ffeat: test\x1f1h ago\x1fAuthor\x1e",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(() => proc.__emit("close", 0), 10);
+		await promise;
+
+		expect(mockSpawn).toHaveBeenCalledWith(
+			"git-sc",
+			["--reword", "abc1234", "-y"],
+			expect.objectContaining({
+				cwd: "/test/workspace",
+				shell: true,
+			}),
+		);
+		expect(mockShowInformationMessage).toHaveBeenCalledWith(
+			"Commit reworded successfully!",
+		);
+		expect(mockExecuteCommand).toHaveBeenCalledWith("git.refresh");
+	});
+
+	it("should show installation link when reword fails with Windows command-not-found message", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x1ffeat: test\x1f1h ago\x1fAuthor\x1e",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		mockShowErrorMessage.mockResolvedValue("View Installation");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(() => {
+			proc.stderr?.emit(
+				"data",
+				Buffer.from(
+					"'git-sc' is not recognized as an internal or external command",
+				),
+			);
+			proc.__emit("close", 1);
+		}, 10);
+
+		await expect(promise).rejects.toThrow();
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"git-sc command not found. Please install it and ensure it's in your PATH.",
+			"View Installation",
+		);
+	});
+
+	it("should handle reword spawn error (ENOENT)", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x1ffeat: test\x1f1h ago\x1fAuthor\x1e",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		mockShowErrorMessage.mockResolvedValue(undefined);
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(
+			() => proc.__emit("error", new Error("spawn git-sc ENOENT")),
+			10,
+		);
+
+		await expect(promise).rejects.toThrow("ENOENT");
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"git-sc command not found. Please install it and ensure it's in your PATH.",
+			"View Installation",
+		);
+	});
+
+	it("should handle reword non-zero exit code", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x1ffeat: test\x1f1h ago\x1fAuthor\x1e",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(() => {
+			proc.stderr?.emit("data", Buffer.from("rebase failed"));
+			proc.__emit("close", 1);
+		}, 10);
+
+		await expect(promise).rejects.toThrow("rebase failed");
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"Reword failed: rebase failed",
+		);
+	});
+
+	it("should not show error when reword is cancelled", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x1ffeat: test\x1f1h ago\x1fAuthor\x1e",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+		mockWithProgress.mockImplementationOnce(
+			async (
+				_options: unknown,
+				callback: (progress: unknown, token: unknown) => Promise<void>,
+			) => {
+				let cancelHandler: (() => void) | undefined;
+				const progress = { report: vi.fn() };
+				const token = {
+					onCancellationRequested: vi.fn((handler: () => void) => {
+						cancelHandler = handler;
+					}),
+					isCancellationRequested: false,
+				};
+
+				const progressPromise = callback(progress, token);
+				cancelHandler?.();
+				setTimeout(() => proc.__emit("close", null), 10);
+				return progressPromise;
+			},
+		);
+
+		await expect(
+			rewordCommit(mockOutputChannel as never),
+		).resolves.toBeUndefined();
+		expect(proc.kill).toHaveBeenCalled();
+		expect(mockShowErrorMessage).not.toHaveBeenCalled();
 	});
 });

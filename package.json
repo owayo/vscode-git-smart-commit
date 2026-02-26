@@ -1,156 +1,156 @@
 {
-  "name": "vscode-git-smart-commit",
-  "displayName": "git-sc (Smart Commit)",
-  "description": "Run git-sc command with one click - AI-powered smart commit message generator",
-  "version": "25.12.110",
-  "publisher": "owayo",
-  "license": "MIT",
-  "icon": "icon.png",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/owayo/vscode-git-smart-commit"
-  },
-  "engines": {
-    "vscode": "^1.96.0"
-  },
-  "categories": [
-    "SCM Providers",
-    "Other"
-  ],
-  "keywords": [
-    "git",
-    "commit",
-    "ai",
-    "smart commit",
-    "git-sc"
-  ],
-  "activationEvents": [
-    "workspaceContains:.git"
-  ],
-  "main": "./dist/extension.js",
-  "contributes": {
-    "commands": [
-      {
-        "command": "git-smart-commit.runAddAutoConfirm",
-        "title": "Git Smart Commit: Stage All & Commit (-a -y)",
-        "icon": "$(git-commit)"
-      },
-      {
-        "command": "git-smart-commit.runAddBodyAutoConfirm",
-        "title": "Git Smart Commit: Stage All & Commit with Body (-a -b -y)",
-        "icon": "$(git-commit)"
-      },
-      {
-        "command": "git-smart-commit.runAutoConfirm",
-        "title": "Git Smart Commit: Commit (-y)",
-        "icon": "$(git-commit)"
-      },
-      {
-        "command": "git-smart-commit.runBodyAutoConfirm",
-        "title": "Git Smart Commit: Commit with Body (-b -y)",
-        "icon": "$(git-commit)"
-      },
-      {
-        "command": "git-smart-commit.reword",
-        "title": "Git Smart Commit: Reword Commit",
-        "icon": "$(edit)"
-      }
-    ],
-    "configuration": {
-      "title": "Git Smart Commit",
-      "properties": {
-        "gitSmartCommit.autoConfirm": {
-          "type": "boolean",
-          "default": false,
-          "description": "Automatically confirm commits without prompting (-y flag)"
-        },
-        "gitSmartCommit.includeBody": {
-          "type": "boolean",
-          "default": false,
-          "description": "Generate detailed commit messages with body (-b flag)"
-        },
-        "gitSmartCommit.showStatusBarButton": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show git-sc button in status bar"
-        }
-      }
-    },
-    "submenus": [
-      {
-        "id": "git-smart-commit.submenu",
-        "label": "Git Smart Commit",
-        "icon": "$(sparkle)"
-      }
-    ],
-    "menus": {
-      "scm/title": [
-        {
-          "submenu": "git-smart-commit.submenu",
-          "group": "navigation@1",
-          "when": "scmProvider == git"
-        }
-      ],
-      "git-smart-commit.submenu": [
-        {
-          "command": "git-smart-commit.runAddAutoConfirm",
-          "group": "1_commit@1"
-        },
-        {
-          "command": "git-smart-commit.runAddBodyAutoConfirm",
-          "group": "1_commit@2"
-        },
-        {
-          "command": "git-smart-commit.runAutoConfirm",
-          "group": "1_commit@3"
-        },
-        {
-          "command": "git-smart-commit.runBodyAutoConfirm",
-          "group": "1_commit@4"
-        },
-        {
-          "command": "git-smart-commit.reword",
-          "group": "2_reword@1"
-        }
-      ],
-      "scm/sourceControl": [
-        {
-          "submenu": "git-smart-commit.submenu",
-          "group": "navigation",
-          "when": "scmProvider == git"
-        }
-      ]
-    },
-    "keybindings": [
-      {
-        "command": "git-smart-commit.runAddAutoConfirm",
-        "key": "ctrl+shift+g c",
-        "mac": "cmd+shift+g c",
-        "when": "!terminalFocus"
-      },
-      {
-        "command": "git-smart-commit.reword",
-        "key": "ctrl+shift+g r",
-        "mac": "cmd+shift+g r",
-        "when": "!terminalFocus"
-      }
-    ]
-  },
-  "scripts": {
-    "vscode:prepublish": "pnpm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "lint": "eslint src",
-    "test": "vitest run"
-  },
-  "devDependencies": {
-    "@types/node": "^25.3.0",
-    "@types/vscode": "^1.109.0",
-    "@typescript-eslint/eslint-plugin": "^8.56.0",
-    "@typescript-eslint/parser": "^8.56.0",
-    "@vscode/vsce": "^3.7.1",
-    "eslint": "^10.0.0",
-    "typescript": "^5.9.3",
-    "vitest": "^4.0.18"
-  }
+	"name": "vscode-git-smart-commit",
+	"displayName": "git-sc (Smart Commit)",
+	"description": "Run git-sc command with one click - AI-powered smart commit message generator",
+	"version": "25.12.110",
+	"publisher": "owayo",
+	"license": "MIT",
+	"icon": "icon.png",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/owayo/vscode-git-smart-commit"
+	},
+	"engines": {
+		"vscode": "^1.109.0"
+	},
+	"categories": [
+		"SCM Providers",
+		"Other"
+	],
+	"keywords": [
+		"git",
+		"commit",
+		"ai",
+		"smart commit",
+		"git-sc"
+	],
+	"activationEvents": [
+		"workspaceContains:.git"
+	],
+	"main": "./dist/extension.js",
+	"contributes": {
+		"commands": [
+			{
+				"command": "git-smart-commit.runAddAutoConfirm",
+				"title": "Git Smart Commit: Stage All & Commit (-a -y)",
+				"icon": "$(git-commit)"
+			},
+			{
+				"command": "git-smart-commit.runAddBodyAutoConfirm",
+				"title": "Git Smart Commit: Stage All & Commit with Body (-a -b -y)",
+				"icon": "$(git-commit)"
+			},
+			{
+				"command": "git-smart-commit.runAutoConfirm",
+				"title": "Git Smart Commit: Commit (-y)",
+				"icon": "$(git-commit)"
+			},
+			{
+				"command": "git-smart-commit.runBodyAutoConfirm",
+				"title": "Git Smart Commit: Commit with Body (-b -y)",
+				"icon": "$(git-commit)"
+			},
+			{
+				"command": "git-smart-commit.reword",
+				"title": "Git Smart Commit: Reword Commit",
+				"icon": "$(edit)"
+			}
+		],
+		"configuration": {
+			"title": "Git Smart Commit",
+			"properties": {
+				"gitSmartCommit.autoConfirm": {
+					"type": "boolean",
+					"default": false,
+					"description": "Automatically confirm commits without prompting (-y flag)"
+				},
+				"gitSmartCommit.includeBody": {
+					"type": "boolean",
+					"default": false,
+					"description": "Generate detailed commit messages with body (-b flag)"
+				},
+				"gitSmartCommit.showStatusBarButton": {
+					"type": "boolean",
+					"default": true,
+					"description": "Show git-sc button in status bar"
+				}
+			}
+		},
+		"submenus": [
+			{
+				"id": "git-smart-commit.submenu",
+				"label": "Git Smart Commit",
+				"icon": "$(sparkle)"
+			}
+		],
+		"menus": {
+			"scm/title": [
+				{
+					"submenu": "git-smart-commit.submenu",
+					"group": "navigation@1",
+					"when": "scmProvider == git"
+				}
+			],
+			"git-smart-commit.submenu": [
+				{
+					"command": "git-smart-commit.runAddAutoConfirm",
+					"group": "1_commit@1"
+				},
+				{
+					"command": "git-smart-commit.runAddBodyAutoConfirm",
+					"group": "1_commit@2"
+				},
+				{
+					"command": "git-smart-commit.runAutoConfirm",
+					"group": "1_commit@3"
+				},
+				{
+					"command": "git-smart-commit.runBodyAutoConfirm",
+					"group": "1_commit@4"
+				},
+				{
+					"command": "git-smart-commit.reword",
+					"group": "2_reword@1"
+				}
+			],
+			"scm/sourceControl": [
+				{
+					"submenu": "git-smart-commit.submenu",
+					"group": "navigation",
+					"when": "scmProvider == git"
+				}
+			]
+		},
+		"keybindings": [
+			{
+				"command": "git-smart-commit.runAddAutoConfirm",
+				"key": "ctrl+shift+g c",
+				"mac": "cmd+shift+g c",
+				"when": "!terminalFocus"
+			},
+			{
+				"command": "git-smart-commit.reword",
+				"key": "ctrl+shift+g r",
+				"mac": "cmd+shift+g r",
+				"when": "!terminalFocus"
+			}
+		]
+	},
+	"scripts": {
+		"vscode:prepublish": "pnpm run compile",
+		"compile": "tsc -p ./",
+		"watch": "tsc -watch -p ./",
+		"lint": "biome lint .",
+		"format": "biome format --write src/commands src/__tests__ README.md AGENTS.md package.json biome.jsonc",
+		"test": "vitest run"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.4",
+		"@types/node": "^25.3.3",
+		"@types/vscode": "^1.109.0",
+		"@vscode/vsce": "^3.7.1",
+		"ovsx": "^0.10.9",
+		"typescript": "^5.9.3",
+		"vitest": "^4.0.18"
+	}
 }

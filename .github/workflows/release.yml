@@ -16,9 +16,13 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Release Extension
+  prepare:
+    name: Prepare Release
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
+      vsix: ${{ steps.vsix.outputs.filename }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -93,29 +97,99 @@ jobs:
         run: pnpm run compile
 
       - name: Package extension
-        if: ${{ !inputs.dry_run }}
         run: pnpm exec vsce package --no-dependencies
 
-      - name: Publish to Visual Studio Marketplace
-        if: ${{ !inputs.dry_run }}
-        run: pnpm exec vsce publish --no-dependencies -p ${{ secrets.VS_MARKETPLACE_TOKEN }} ${{ inputs.pre_release && '--pre-release' || '' }}
-
       - name: Get VSIX filename
-        if: ${{ !inputs.dry_run }}
         id: vsix
         run: echo "filename=$(ls *.vsix)" >> $GITHUB_OUTPUT
 
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: "*.vsix"
+
+  publish-vscode:
+    name: Publish to VS Marketplace
+    needs: prepare
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download VSIX
+        uses: actions/download-artifact@v4
+        with:
+          name: vsix
+
+      - name: Publish
+        run: pnpm exec vsce publish --packagePath ${{ needs.prepare.outputs.vsix }} -p ${{ secrets.VS_MARKETPLACE_TOKEN }} ${{ inputs.pre_release && '--pre-release' || '' }}
+
+  publish-openvsx:
+    name: Publish to Open VSX
+    needs: prepare
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download VSIX
+        uses: actions/download-artifact@v4
+        with:
+          name: vsix
+
+      - name: Publish
+        run: pnpm exec ovsx publish ${{ needs.prepare.outputs.vsix }} -p ${{ secrets.OPEN_VSX_TOKEN }} ${{ inputs.pre_release && '--pre-release' || '' }}
+
+  github-release:
+    name: GitHub Release
+    needs: [prepare, publish-vscode, publish-openvsx]
+    if: ${{ !inputs.dry_run && !cancelled() && needs.prepare.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download VSIX
+        uses: actions/download-artifact@v4
+        with:
+          name: vsix
+
       - name: Create GitHub Release
-        if: ${{ !inputs.dry_run }}
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.bump.outputs.version }}
-          name: v${{ steps.bump.outputs.version }}
+          tag_name: v${{ needs.prepare.outputs.version }}
+          name: v${{ needs.prepare.outputs.version }}
           draft: false
           prerelease: ${{ inputs.pre_release }}
-          files: ${{ steps.vsix.outputs.filename }}
+          files: ${{ needs.prepare.outputs.vsix }}
           generate_release_notes: true
 
       - name: Release summary
-        if: ${{ !inputs.dry_run }}
-        run: echo "🚀 Released v${{ steps.bump.outputs.version }} to Visual Studio Marketplace"
+        run: |
+          echo "## Release v${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- VS Marketplace: ${{ needs.publish-vscode.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Open VSX: ${{ needs.publish-openvsx.result }}" >> $GITHUB_STEP_SUMMARY
