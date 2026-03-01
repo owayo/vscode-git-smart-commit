@@ -15,6 +15,9 @@
   <a href="https://marketplace.visualstudio.com/items?itemName=owayo.vscode-git-smart-commit">
     <img alt="Installs" src="https://img.shields.io/visual-studio-marketplace/i/owayo.vscode-git-smart-commit">
   </a>
+  <a href="https://open-vsx.org/extension/owayo/vscode-git-smart-commit">
+    <img alt="Open VSX" src="https://img.shields.io/open-vsx/v/owayo/vscode-git-smart-commit?label=Open%20VSX">
+  </a>
   <a href="https://github.com/owayo/vscode-git-smart-commit/actions/workflows/release.yml">
     <img alt="Release" src="https://github.com/owayo/vscode-git-smart-commit/actions/workflows/release.yml/badge.svg">
   </a>
