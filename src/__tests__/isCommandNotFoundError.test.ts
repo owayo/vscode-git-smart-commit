@@ -78,6 +78,19 @@ describe("isCommandNotFoundError", () => {
 		);
 	});
 
+	it("returns true for shell not-found message without 'command' prefix", () => {
+		expect(isCommandNotFoundError(127, "git-sc: not found")).toBe(true);
+	});
+
+	it("returns true for PowerShell message without article 'a'", () => {
+		expect(
+			isCommandNotFoundError(
+				1,
+				"the term 'git-sc' is not recognized as the name of cmdlet",
+			),
+		).toBe(true);
+	});
+
 	it("returns false for empty error message with non-matching exit code", () => {
 		expect(isCommandNotFoundError(1, "")).toBe(false);
 	});

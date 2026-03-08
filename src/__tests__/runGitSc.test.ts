@@ -89,7 +89,7 @@ describe("runGitSc", () => {
 			append: vi.fn(),
 			dispose: vi.fn(),
 		};
-		// Make withProgress execute the callback immediately
+		// withProgress のコールバックを即時実行する
 		mockWithProgress.mockImplementation(
 			async (
 				_options: unknown,
@@ -138,7 +138,7 @@ describe("runGitSc", () => {
 			autoConfirm: true,
 		});
 
-		// Simulate successful exit
+		// 正常終了を疑似的に発火
 		setTimeout(() => proc.__emit("close", 0), 10);
 		await promise;
 
@@ -408,6 +408,126 @@ describe("runGitSc", () => {
 				env: expect.objectContaining({ FORCE_COLOR: "0" }),
 			}),
 		);
+	});
+
+	it("should fallback to exit code message when stderr and stdout are empty", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => proc.__emit("close", 42), 10);
+
+		await expect(promise).rejects.toThrow("Process exited with code 42");
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"Git Smart Commit failed: Process exited with code 42",
+		);
+	});
+
+	it("should capture stderr output", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => {
+			proc.stderr?.emit("data", Buffer.from("warning message"));
+			proc.__emit("close", 0);
+		}, 10);
+
+		await promise;
+
+		expect(mockOutputChannel.append).toHaveBeenCalledWith("warning message");
+	});
+
+	it("should resolve safely when error fires after cancellation", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		mockWithProgress.mockImplementationOnce(
+			async (
+				_options: unknown,
+				callback: (progress: unknown, token: unknown) => Promise<void>,
+			) => {
+				let cancelHandler: (() => void) | undefined;
+				const progress = { report: vi.fn() };
+				const token = {
+					onCancellationRequested: vi.fn((handler: () => void) => {
+						cancelHandler = handler;
+					}),
+					isCancellationRequested: false,
+				};
+
+				const progressPromise = callback(progress, token);
+				// キャンセル後に error イベントが発火するケース
+				cancelHandler?.();
+				setTimeout(() => proc.__emit("error", new Error("killed")), 10);
+				return progressPromise;
+			},
+		);
+
+		await expect(
+			runGitSc(mockOutputChannel as never, { autoConfirm: true }),
+		).resolves.toBeUndefined();
+		expect(mockShowErrorMessage).not.toHaveBeenCalled();
+	});
+
+	it("should show error when workspace folders is empty array", async () => {
+		const vscode = await import("vscode");
+		Object.defineProperty(vscode.workspace, "workspaceFolders", {
+			value: [],
+			writable: true,
+			configurable: true,
+		});
+
+		await runGitSc(mockOutputChannel as never);
+
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"No workspace folder open",
+		);
+
+		Object.defineProperty(vscode.workspace, "workspaceFolders", {
+			value: [{ uri: { fsPath: "/test/workspace" } }],
+			writable: true,
+			configurable: true,
+		});
+	});
+
+	it("should resolve safely when close fires after cancellation", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		mockWithProgress.mockImplementationOnce(
+			async (
+				_options: unknown,
+				callback: (progress: unknown, token: unknown) => Promise<void>,
+			) => {
+				let cancelHandler: (() => void) | undefined;
+				const progress = { report: vi.fn() };
+				const token = {
+					onCancellationRequested: vi.fn((handler: () => void) => {
+						cancelHandler = handler;
+					}),
+					isCancellationRequested: false,
+				};
+
+				const progressPromise = callback(progress, token);
+				// キャンセル後に close イベントが非ゼロコードで発火するケース
+				cancelHandler?.();
+				setTimeout(() => proc.__emit("close", 1), 10);
+				return progressPromise;
+			},
+		);
+
+		await expect(
+			runGitSc(mockOutputChannel as never, { autoConfirm: true }),
+		).resolves.toBeUndefined();
+		expect(proc.kill).toHaveBeenCalled();
+		expect(mockShowErrorMessage).not.toHaveBeenCalled();
 	});
 
 	it("should not show error when cancelled", async () => {

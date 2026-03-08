@@ -60,7 +60,7 @@ describe("extension", () => {
 		push: vi.fn(),
 	} as unknown as vscodeTypes.ExtensionContext;
 
-	// Use subscriptions.push spy
+	// subscriptions.push の挙動を検証できるよう配列を初期化
 	(mockContext.subscriptions as unknown[]) = [];
 
 	beforeEach(async () => {
@@ -107,12 +107,81 @@ describe("extension", () => {
 	it("should add disposables to context subscriptions", () => {
 		activate(mockContext);
 
-		// 5 commands + 1 status bar item + 1 config change listener
+		// 5 コマンド + ステータスバー 1 件 + 設定変更リスナー 1 件
 		expect(mockContext.subscriptions.length).toBeGreaterThanOrEqual(7);
 	});
 
 	it("should deactivate without error", () => {
 		activate(mockContext);
 		expect(() => deactivate()).not.toThrow();
+	});
+
+	it("should deactivate safely before activation", () => {
+		// outputChannel が未初期化でもエラーにならない（?. によるガード）
+		expect(() => deactivate()).not.toThrow();
+	});
+
+	it("should hide status bar when showStatusBarButton is false", () => {
+		const mockStatusBar = {
+			command: "",
+			text: "",
+			tooltip: "",
+			show: vi.fn(),
+			hide: vi.fn(),
+			dispose: vi.fn(),
+		};
+		mockCreateStatusBarItem.mockReturnValueOnce(mockStatusBar);
+		mockGetConfiguration.mockReturnValueOnce({
+			get: vi.fn((_key: string) => false),
+		});
+
+		activate(mockContext);
+
+		expect(mockStatusBar.hide).toHaveBeenCalled();
+	});
+
+	it("should show status bar when showStatusBarButton is true", () => {
+		const mockStatusBar = {
+			command: "",
+			text: "",
+			tooltip: "",
+			show: vi.fn(),
+			hide: vi.fn(),
+			dispose: vi.fn(),
+		};
+		mockCreateStatusBarItem.mockReturnValueOnce(mockStatusBar);
+		mockGetConfiguration.mockReturnValueOnce({
+			get: vi.fn((_key: string, defaultValue: unknown) => defaultValue),
+		});
+
+		activate(mockContext);
+
+		expect(mockStatusBar.show).toHaveBeenCalled();
+	});
+
+	it("should invoke config change callback and update visibility", () => {
+		const mockStatusBar = {
+			command: "",
+			text: "",
+			tooltip: "",
+			show: vi.fn(),
+			hide: vi.fn(),
+			dispose: vi.fn(),
+		};
+		mockCreateStatusBarItem.mockReturnValueOnce(mockStatusBar);
+
+		activate(mockContext);
+
+		// 設定変更コールバックを取得して実行
+		const changeCallback = mockOnDidChangeConfiguration.mock.calls[0][0];
+		mockGetConfiguration.mockReturnValueOnce({
+			get: vi.fn((_key: string) => false),
+		});
+		changeCallback({
+			affectsConfiguration: (key: string) =>
+				key === "gitSmartCommit.showStatusBarButton",
+		});
+
+		expect(mockStatusBar.hide).toHaveBeenCalled();
 	});
 });

@@ -8,20 +8,20 @@ let outputChannel: vscode.OutputChannel;
 export function activate(context: vscode.ExtensionContext): void {
 	outputChannel = vscode.window.createOutputChannel("Git Smart Commit");
 
-	// Register commands
-	// -a -y
+	// コマンドを登録
+	// ステージ全件 + 自動確定 (-a -y)
 	const runAddAutoConfirmCommand = vscode.commands.registerCommand(
 		"git-smart-commit.runAddAutoConfirm",
 		async () => {
 			try {
 				await runGitSc(outputChannel, { stageAll: true, autoConfirm: true });
 			} catch {
-				// Error already handled in runGitSc
+				// runGitSc 側でエラー表示済み
 			}
 		},
 	);
 
-	// -a -b -y
+	// ステージ全件 + 本文付き + 自動確定 (-a -b -y)
 	const runAddBodyAutoConfirmCommand = vscode.commands.registerCommand(
 		"git-smart-commit.runAddBodyAutoConfirm",
 		async () => {
@@ -32,43 +32,43 @@ export function activate(context: vscode.ExtensionContext): void {
 					autoConfirm: true,
 				});
 			} catch {
-				// Error already handled in runGitSc
+				// runGitSc 側でエラー表示済み
 			}
 		},
 	);
 
-	// -y
+	// 自動確定のみ (-y)
 	const runAutoConfirmCommand = vscode.commands.registerCommand(
 		"git-smart-commit.runAutoConfirm",
 		async () => {
 			try {
 				await runGitSc(outputChannel, { autoConfirm: true });
 			} catch {
-				// Error already handled in runGitSc
+				// runGitSc 側でエラー表示済み
 			}
 		},
 	);
 
-	// -b -y
+	// 本文付き + 自動確定 (-b -y)
 	const runBodyAutoConfirmCommand = vscode.commands.registerCommand(
 		"git-smart-commit.runBodyAutoConfirm",
 		async () => {
 			try {
 				await runGitSc(outputChannel, { includeBody: true, autoConfirm: true });
 			} catch {
-				// Error already handled in runGitSc
+				// runGitSc 側でエラー表示済み
 			}
 		},
 	);
 
-	// Reword (QuickPick selection)
+	// Reword（QuickPick で対象を選択）
 	const rewordCommand = vscode.commands.registerCommand(
 		"git-smart-commit.reword",
 		async () => {
 			try {
 				await rewordCommit(outputChannel);
 			} catch {
-				// Error already handled in rewordCommit
+				// rewordCommit 側でエラー表示済み
 			}
 		},
 	);
@@ -81,10 +81,10 @@ export function activate(context: vscode.ExtensionContext): void {
 		rewordCommand,
 	);
 
-	// Create status bar item
+	// ステータスバー項目を作成
 	createStatusBarItem(context);
 
-	// Watch for configuration changes
+	// 設定変更を監視
 	context.subscriptions.push(
 		vscode.workspace.onDidChangeConfiguration((e) => {
 			if (e.affectsConfiguration("gitSmartCommit.showStatusBarButton")) {

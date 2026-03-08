@@ -168,6 +168,18 @@ describe("getRecentCommits", () => {
 		expect(commits[0].message).toBe("feat: support A|B|C");
 	});
 
+	it("should keep commit subjects that include field separators", () => {
+		mockExecFileSync.mockReturnValue(
+			"abc\x1ffeat: support A\x1fB\x1f1h ago\x1fAuthor\x1e",
+		);
+
+		const commits = getRecentCommits("/workspace");
+		expect(commits).toHaveLength(1);
+		expect(commits[0].message).toBe("feat: support A\x1fB");
+		expect(commits[0].date).toBe("1h ago");
+		expect(commits[0].author).toBe("Author");
+	});
+
 	it("should use 1-based index for git-sc --reword", () => {
 		mockExecFileSync.mockReturnValue(
 			"abc\x1ffirst\x1f1h ago\x1fA\x1edef\x1fsecond\x1f2h ago\x1fB\x1eghi\x1fthird\x1f3h ago\x1fC\x1e",
@@ -282,6 +294,27 @@ describe("rewordCommit", () => {
 		});
 	});
 
+	it("should show error when workspace folders is empty array", async () => {
+		const vscode = await import("vscode");
+		Object.defineProperty(vscode.workspace, "workspaceFolders", {
+			value: [],
+			writable: true,
+			configurable: true,
+		});
+
+		await rewordCommit(mockOutputChannel as never);
+
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"No workspace folder open",
+		);
+
+		Object.defineProperty(vscode.workspace, "workspaceFolders", {
+			value: [{ uri: { fsPath: "/test/workspace" } }],
+			writable: true,
+			configurable: true,
+		});
+	});
+
 	it("should show warning when no commits found", async () => {
 		mockExecFileSync.mockReturnValue("");
 
@@ -338,6 +371,49 @@ describe("rewordCommit", () => {
 		expect(mockShowQuickPick).toHaveBeenCalledTimes(1);
 	});
 
+	it("should truncate long commit message in confirmation dialog", async () => {
+		const longMessage = "feat: ".padEnd(60, "x");
+		mockExecFileSync.mockReturnValue(
+			`abc\x1f${longMessage}\x1f1h ago\x1fAuthor\x1e`,
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		// 確認ダイアログの placeHolder に "..." が含まれることを検証
+		mockShowQuickPick.mockImplementationOnce(
+			(_items: unknown[], options: { placeHolder?: string }) => {
+				expect(options.placeHolder).toContain("...");
+				expect(options.placeHolder).toMatch(/.{50}\.\.\."?\?$/);
+				return Promise.resolve("No");
+			},
+		);
+
+		await rewordCommit(mockOutputChannel as never);
+
+		expect(mockShowQuickPick).toHaveBeenCalledTimes(2);
+	});
+
+	it("should not truncate short commit message in confirmation dialog", async () => {
+		const shortMessage = "fix: short";
+		mockExecFileSync.mockReturnValue(
+			`abc\x1f${shortMessage}\x1f1h ago\x1fAuthor\x1e`,
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockImplementationOnce(
+			(_items: unknown[], options: { placeHolder?: string }) => {
+				expect(options.placeHolder).not.toContain("...");
+				expect(options.placeHolder).toContain(shortMessage);
+				return Promise.resolve("No");
+			},
+		);
+
+		await rewordCommit(mockOutputChannel as never);
+
+		expect(mockShowQuickPick).toHaveBeenCalledTimes(2);
+	});
+
 	it("should return when user cancels commit selection", async () => {
 		mockExecFileSync.mockReturnValue(
 			"abc\x1ffeat: test\x1f1h ago\x1fAuthor\x1e",
@@ -346,7 +422,7 @@ describe("rewordCommit", () => {
 
 		await rewordCommit(mockOutputChannel as never);
 
-		// Only one QuickPick call (commit selection), no confirmation
+		// QuickPick はコミット選択の 1 回だけ（確認ダイアログは出ない）
 		expect(mockShowQuickPick).toHaveBeenCalledTimes(1);
 	});
 
@@ -354,11 +430,11 @@ describe("rewordCommit", () => {
 		mockExecFileSync.mockReturnValue(
 			"abc\x1ffeat: test\x1f1h ago\x1fAuthor\x1e",
 		);
-		// First QuickPick: return the first item from the passed items array
+		// 1 回目の QuickPick は候補先頭を選択
 		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
 			Promise.resolve(items[0]),
 		);
-		// Second QuickPick: decline confirmation
+		// 2 回目の QuickPick では確認を拒否
 		mockShowQuickPick.mockResolvedValueOnce("No");
 
 		await rewordCommit(mockOutputChannel as never);
@@ -471,6 +547,84 @@ describe("rewordCommit", () => {
 		await expect(promise).rejects.toThrow("rebase failed");
 		expect(mockShowErrorMessage).toHaveBeenCalledWith(
 			"Reword failed: rebase failed",
+		);
+	});
+
+	it("should handle reword non-ENOENT spawn error", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x1ffeat: test\x1f1h ago\x1fAuthor\x1e",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(() => proc.__emit("error", new Error("spawn EACCES")), 10);
+
+		await expect(promise).rejects.toThrow("EACCES");
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"Failed to run git-sc: spawn EACCES",
+		);
+	});
+
+	it("should resolve safely when error fires after reword cancellation", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x1ffeat: test\x1f1h ago\x1fAuthor\x1e",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+		mockWithProgress.mockImplementationOnce(
+			async (
+				_options: unknown,
+				callback: (progress: unknown, token: unknown) => Promise<void>,
+			) => {
+				let cancelHandler: (() => void) | undefined;
+				const progress = { report: vi.fn() };
+				const token = {
+					onCancellationRequested: vi.fn((handler: () => void) => {
+						cancelHandler = handler;
+					}),
+					isCancellationRequested: false,
+				};
+
+				const progressPromise = callback(progress, token);
+				// キャンセル後に error イベントが発火するケース
+				cancelHandler?.();
+				setTimeout(() => proc.__emit("error", new Error("killed")), 10);
+				return progressPromise;
+			},
+		);
+
+		await expect(
+			rewordCommit(mockOutputChannel as never),
+		).resolves.toBeUndefined();
+		expect(mockShowErrorMessage).not.toHaveBeenCalled();
+	});
+
+	it("should show fallback exit code message when reword stderr and stdout are empty", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x1ffeat: test\x1f1h ago\x1fAuthor\x1e",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(() => proc.__emit("close", 42), 10);
+
+		await expect(promise).rejects.toThrow("Process exited with code 42");
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"Reword failed: Process exited with code 42",
 		);
 	});
 

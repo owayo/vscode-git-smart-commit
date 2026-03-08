@@ -65,6 +65,7 @@ src/
 ## Recent Maintenance Notes
 
 - Reword commit parsing now handles subjects containing `|` safely.
+- Reword commit parsing now preserves subjects containing field separators (`\x1f`) without shifting `date`/`author`.
 - Reword commit history load errors (e.g., missing `git`) now show explicit error messages instead of "No commits found".
 - Cancellation flow in both commit and reword commands no longer reports failure on normal cancel.
 - Added regression tests for cancellation and reword execution flow.
@@ -73,6 +74,11 @@ src/
 - Improved command-not-found detection for Windows (`is not recognized`) and added regression tests.
 - Fixed off-by-one in reword commit list detail (`0 commit(s) ago` for latest commit) and added regression test.
 - Removed legacy ESLint dependencies/config; linting is Biome-only.
+- Added tests for empty stderr/stdout fallback message, stderr capture, reword non-ENOENT spawn error, and pre-activation deactivate safety.
+- Added edge-case tests for empty workspace folders array (`[]`) in both `runGitSc` and `rewordCommit`.
+- Added `isCommandNotFoundError` tests for shell `not found` pattern (without "command" prefix) and PowerShell pattern without article "a".
+- Added edge-case tests for cancellation followed by `close`/`error` events in both `runGitSc` and `rewordCommit`.
+- Added test for reword fallback exit code message when stderr/stdout are empty.
 
 ## VS Code Extension Details
 

@@ -38,7 +38,7 @@ export async function runGitSc(
 	const workspaceRoot = workspaceFolders[0].uri.fsPath;
 	const config = vscode.workspace.getConfiguration("gitSmartCommit");
 
-	// Build command arguments
+	// 実行コマンドの引数を組み立てる
 	const args: string[] = [];
 
 	if (options.stageAll) {
@@ -119,7 +119,7 @@ export async function runGitSc(
 						outputChannel.appendLine(`\n✅ git-sc completed successfully`);
 						vscode.window.showInformationMessage("Git Smart Commit completed!");
 
-						// Refresh git extension to show updated state
+						// Git 拡張の状態表示を更新
 						vscode.commands.executeCommand("git.refresh");
 						resolveOnce();
 					} else {

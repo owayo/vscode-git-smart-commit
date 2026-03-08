@@ -52,11 +52,12 @@ export function getRecentCommits(
 		.map((line) => line.trim())
 		.filter((line) => line.length > 0)
 		.map((line, index) => {
-			const [hash = "", message = "", date = "", author = ""] = line.split(
-				GIT_LOG_FIELD_SEPARATOR,
-			);
+			const [hash = "", ...restFields] = line.split(GIT_LOG_FIELD_SEPARATOR);
+			const author = restFields.pop() ?? "";
+			const date = restFields.pop() ?? "";
+			const message = restFields.join(GIT_LOG_FIELD_SEPARATOR);
 			return {
-				index: index + 1, // 1-based index for git-sc --reword
+				index: index + 1, // git-sc --reword 向けの 1 始まりインデックス
 				hash,
 				message,
 				date,
@@ -77,7 +78,7 @@ export async function rewordCommit(
 
 	const workspaceRoot = workspaceFolders[0].uri.fsPath;
 
-	// Get recent commits
+	// 直近コミットを取得
 	let commits: CommitInfo[];
 	try {
 		commits = getRecentCommits(workspaceRoot, 15);
@@ -104,7 +105,7 @@ export async function rewordCommit(
 		return;
 	}
 
-	// Create QuickPick items
+	// QuickPick の候補を作成
 	const items: Array<vscode.QuickPickItem & { commit: CommitInfo }> =
 		commits.map((commit) => ({
 			label: `$(git-commit) ${commit.message}`,
@@ -113,7 +114,7 @@ export async function rewordCommit(
 			commit,
 		}));
 
-	// Show QuickPick
+	// QuickPick を表示
 	const selected = await vscode.window.showQuickPick(items, {
 		placeHolder: "Select a commit to reword",
 		title: "Git Smart Commit: Reword",
@@ -122,12 +123,12 @@ export async function rewordCommit(
 	});
 
 	if (!selected) {
-		return; // User cancelled
+		return; // ユーザーがキャンセル
 	}
 
 	const commit = selected.commit;
 
-	// Confirm the selection
+	// 選択内容を確認
 	const confirm = await vscode.window.showQuickPick(["Yes", "No"], {
 		placeHolder: `Reword commit "${commit.message.substring(0, 50)}${commit.message.length > 50 ? "..." : ""}"?`,
 		title: "Confirm Reword",
@@ -137,7 +138,7 @@ export async function rewordCommit(
 		return;
 	}
 
-	// Run git-sc --reword with commit hash
+	// 選択したコミットハッシュで git-sc --reword を実行
 	await runGitScReword(outputChannel, workspaceRoot, commit.hash);
 }
 
