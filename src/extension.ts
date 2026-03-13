@@ -61,7 +61,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		},
 	);
 
-	// Reword（QuickPick で対象を選択）
+	// コミット文面の修正（QuickPick で対象を選択）
 	const rewordCommand = vscode.commands.registerCommand(
 		"git-smart-commit.reword",
 		async () => {

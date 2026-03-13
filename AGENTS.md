@@ -64,6 +64,7 @@ src/
 
 ## Recent Maintenance Notes
 
+- Reword commit parsing now uses NUL-delimited `git log` output so subjects containing record separators (`\x1e`) are preserved correctly.
 - Reword commit parsing now handles subjects containing `|` safely.
 - Reword commit parsing now preserves subjects containing field separators (`\x1f`) without shifting `date`/`author`.
 - Reword commit history load errors (e.g., missing `git`) now show explicit error messages instead of "No commits found".
@@ -79,6 +80,8 @@ src/
 - Added `isCommandNotFoundError` tests for shell `not found` pattern (without "command" prefix) and PowerShell pattern without article "a".
 - Added edge-case tests for cancellation followed by `close`/`error` events in both `runGitSc` and `rewordCommit`.
 - Added test for reword fallback exit code message when stderr/stdout are empty.
+- Fixed git log format to use `format:` prefix (`--format=format:...`) instead of default `tformat:` semantics to prevent terminator newlines from contaminating commit hashes in multi-commit parsing.
+- Added regression test for tformat newline contamination and format prefix verification.
 
 ## VS Code Extension Details
 

@@ -12,8 +12,7 @@ export interface CommitInfo {
 
 const GIT_SC_INSTALLATION_URL =
 	"https://github.com/owayo/git-smart-commit#installation";
-const GIT_LOG_FIELD_SEPARATOR = "\x1f";
-const GIT_LOG_RECORD_SEPARATOR = "\x1e";
+const GIT_LOG_SEPARATOR = "\x00";
 
 function showGitScNotFoundMessage(): void {
 	vscode.window
@@ -37,7 +36,7 @@ export function getRecentCommits(
 		"git",
 		[
 			"log",
-			`--format=%h${GIT_LOG_FIELD_SEPARATOR}%s${GIT_LOG_FIELD_SEPARATOR}%cr${GIT_LOG_FIELD_SEPARATOR}%an${GIT_LOG_RECORD_SEPARATOR}`,
+			"--format=format:%h%x00%s%x00%cr%x00%an%x00",
 			"-n",
 			String(safeLimit),
 		],
@@ -47,23 +46,30 @@ export function getRecentCommits(
 		},
 	);
 
-	return output
-		.split(GIT_LOG_RECORD_SEPARATOR)
-		.map((line) => line.trim())
-		.filter((line) => line.length > 0)
-		.map((line, index) => {
-			const [hash = "", ...restFields] = line.split(GIT_LOG_FIELD_SEPARATOR);
-			const author = restFields.pop() ?? "";
-			const date = restFields.pop() ?? "";
-			const message = restFields.join(GIT_LOG_FIELD_SEPARATOR);
-			return {
-				index: index + 1, // git-sc --reword 向けの 1 始まりインデックス
-				hash,
-				message,
-				date,
-				author,
-			};
+	const fields = output.split(GIT_LOG_SEPARATOR);
+	const commits: CommitInfo[] = [];
+
+	for (
+		let index = 0, fieldIndex = 0;
+		fieldIndex + 3 < fields.length;
+		index += 1
+	) {
+		const hash = fields[fieldIndex] ?? "";
+		const message = fields[fieldIndex + 1] ?? "";
+		const date = fields[fieldIndex + 2] ?? "";
+		const author = fields[fieldIndex + 3] ?? "";
+		fieldIndex += 4;
+
+		commits.push({
+			index: index + 1, // git-sc --reword 向けの 1 始まりインデックス
+			hash,
+			message,
+			date,
+			author,
 		});
+	}
+
+	return commits;
 }
 
 export async function rewordCommit(

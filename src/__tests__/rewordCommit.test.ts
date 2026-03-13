@@ -83,7 +83,7 @@ function createMockProcess(): ChildProcess & {
 describe("getRecentCommits", () => {
 	it("should parse git log output correctly", () => {
 		mockExecFileSync.mockReturnValue(
-			"abc1234\x1ffeat: add new feature\x1f2 hours ago\x1fJohn Doe\x1edef5678\x1ffix: resolve bug\x1f1 day ago\x1fJane Smith\x1e",
+			"abc1234\x00feat: add new feature\x002 hours ago\x00John Doe\x00def5678\x00fix: resolve bug\x001 day ago\x00Jane Smith\x00",
 		);
 
 		const commits = getRecentCommits("/workspace");
@@ -123,44 +123,44 @@ describe("getRecentCommits", () => {
 	});
 
 	it("should respect the limit parameter", () => {
-		mockExecFileSync.mockReturnValue("abc\x1fmsg\x1f1h ago\x1fAuthor\x1e");
+		mockExecFileSync.mockReturnValue("abc\x00msg\x001h ago\x00Author\x00");
 
 		getRecentCommits("/workspace", 5);
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
 			"git",
-			["log", "--format=%h\x1f%s\x1f%cr\x1f%an\x1e", "-n", "5"],
+			["log", "--format=format:%h%x00%s%x00%cr%x00%an%x00", "-n", "5"],
 			{ cwd: "/workspace", encoding: "utf-8" },
 		);
 	});
 
 	it("should use default limit of 10", () => {
-		mockExecFileSync.mockReturnValue("abc\x1fmsg\x1f1h ago\x1fAuthor\x1e");
+		mockExecFileSync.mockReturnValue("abc\x00msg\x001h ago\x00Author\x00");
 
 		getRecentCommits("/workspace");
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
 			"git",
-			["log", "--format=%h\x1f%s\x1f%cr\x1f%an\x1e", "-n", "10"],
+			["log", "--format=format:%h%x00%s%x00%cr%x00%an%x00", "-n", "10"],
 			{ cwd: "/workspace", encoding: "utf-8" },
 		);
 	});
 
 	it("should fallback to default limit when non-positive limit is passed", () => {
-		mockExecFileSync.mockReturnValue("abc\x1fmsg\x1f1h ago\x1fAuthor\x1e");
+		mockExecFileSync.mockReturnValue("abc\x00msg\x001h ago\x00Author\x00");
 
 		getRecentCommits("/workspace", 0);
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
 			"git",
-			["log", "--format=%h\x1f%s\x1f%cr\x1f%an\x1e", "-n", "10"],
+			["log", "--format=format:%h%x00%s%x00%cr%x00%an%x00", "-n", "10"],
 			{ cwd: "/workspace", encoding: "utf-8" },
 		);
 	});
 
 	it("should keep commit subjects that include pipes", () => {
 		mockExecFileSync.mockReturnValue(
-			"abc\x1ffeat: support A|B|C\x1f1h ago\x1fAuthor\x1e",
+			"abc\x00feat: support A|B|C\x001h ago\x00Author\x00",
 		);
 
 		const commits = getRecentCommits("/workspace");
@@ -170,7 +170,7 @@ describe("getRecentCommits", () => {
 
 	it("should keep commit subjects that include field separators", () => {
 		mockExecFileSync.mockReturnValue(
-			"abc\x1ffeat: support A\x1fB\x1f1h ago\x1fAuthor\x1e",
+			"abc\x00feat: support A\x1fB\x001h ago\x00Author\x00",
 		);
 
 		const commits = getRecentCommits("/workspace");
@@ -180,9 +180,21 @@ describe("getRecentCommits", () => {
 		expect(commits[0].author).toBe("Author");
 	});
 
+	it("should keep commit subjects that include record separators", () => {
+		mockExecFileSync.mockReturnValue(
+			"abc\x00feat: support A\x1eB\x001h ago\x00Author\x00",
+		);
+
+		const commits = getRecentCommits("/workspace");
+		expect(commits).toHaveLength(1);
+		expect(commits[0].message).toBe("feat: support A\x1eB");
+		expect(commits[0].date).toBe("1h ago");
+		expect(commits[0].author).toBe("Author");
+	});
+
 	it("should use 1-based index for git-sc --reword", () => {
 		mockExecFileSync.mockReturnValue(
-			"abc\x1ffirst\x1f1h ago\x1fA\x1edef\x1fsecond\x1f2h ago\x1fB\x1eghi\x1fthird\x1f3h ago\x1fC\x1e",
+			"abc\x00first\x001h ago\x00A\x00def\x00second\x002h ago\x00B\x00ghi\x00third\x003h ago\x00C\x00",
 		);
 
 		const commits = getRecentCommits("/workspace");
@@ -192,43 +204,68 @@ describe("getRecentCommits", () => {
 	});
 
 	it("should fallback to default limit when negative limit is passed", () => {
-		mockExecFileSync.mockReturnValue("abc\x1fmsg\x1f1h ago\x1fAuthor\x1e");
+		mockExecFileSync.mockReturnValue("abc\x00msg\x001h ago\x00Author\x00");
 
 		getRecentCommits("/workspace", -5);
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
 			"git",
-			["log", "--format=%h\x1f%s\x1f%cr\x1f%an\x1e", "-n", "10"],
+			["log", "--format=format:%h%x00%s%x00%cr%x00%an%x00", "-n", "10"],
 			{ cwd: "/workspace", encoding: "utf-8" },
 		);
 	});
 
 	it("should fallback to default limit when float is passed", () => {
-		mockExecFileSync.mockReturnValue("abc\x1fmsg\x1f1h ago\x1fAuthor\x1e");
+		mockExecFileSync.mockReturnValue("abc\x00msg\x001h ago\x00Author\x00");
 
 		getRecentCommits("/workspace", 3.5);
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
 			"git",
-			["log", "--format=%h\x1f%s\x1f%cr\x1f%an\x1e", "-n", "10"],
+			["log", "--format=format:%h%x00%s%x00%cr%x00%an%x00", "-n", "10"],
 			{ cwd: "/workspace", encoding: "utf-8" },
 		);
 	});
 
 	it("should fallback to default limit when NaN is passed", () => {
-		mockExecFileSync.mockReturnValue("abc\x1fmsg\x1f1h ago\x1fAuthor\x1e");
+		mockExecFileSync.mockReturnValue("abc\x00msg\x001h ago\x00Author\x00");
 
 		getRecentCommits("/workspace", Number.NaN);
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
 			"git",
-			["log", "--format=%h\x1f%s\x1f%cr\x1f%an\x1e", "-n", "10"],
+			["log", "--format=format:%h%x00%s%x00%cr%x00%an%x00", "-n", "10"],
+			{ cwd: "/workspace", encoding: "utf-8" },
+		);
+	});
+
+	it("should parse commits even when tformat newline appears before the next hash", () => {
+		// tformat: セマンティクス使用時にエントリ間に \n が混入するケースの回帰テスト
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00first\x001h ago\x00Alice\x00\ndef5678\x00second\x002h ago\x00Bob\x00",
+		);
+
+		const commits = getRecentCommits("/workspace");
+
+		expect(commits).toHaveLength(2);
+		expect(commits[0].hash).toBe("abc1234");
+		expect(commits[1].hash).toBe("\ndef5678");
+	});
+
+	it("should use format: prefix to avoid tformat terminator newlines", () => {
+		mockExecFileSync.mockReturnValue("abc\x00msg\x001h ago\x00Author\x00");
+
+		getRecentCommits("/workspace", 5);
+
+		expect(mockExecFileSync).toHaveBeenCalledWith(
+			"git",
+			["log", "--format=format:%h%x00%s%x00%cr%x00%an%x00", "-n", "5"],
 			{ cwd: "/workspace", encoding: "utf-8" },
 		);
 	});
 
 	it("should handle commit with empty fields gracefully", () => {
-		mockExecFileSync.mockReturnValue("\x1f\x1f\x1f\x1e");
+		mockExecFileSync.mockReturnValue("\x00\x00\x00\x00");
 
 		const commits = getRecentCommits("/workspace");
 		expect(commits).toHaveLength(1);
@@ -358,7 +395,7 @@ describe("rewordCommit", () => {
 
 	it("should show 0 commit(s) ago for the latest commit in selection", async () => {
 		mockExecFileSync.mockReturnValue(
-			"abc\x1ffeat: latest\x1f1h ago\x1fAuthor\x1e",
+			"abc\x00feat: latest\x001h ago\x00Author\x00",
 		);
 		mockShowQuickPick.mockImplementationOnce((items: unknown[]) => {
 			const firstItem = items[0] as { detail?: string };
@@ -374,7 +411,7 @@ describe("rewordCommit", () => {
 	it("should truncate long commit message in confirmation dialog", async () => {
 		const longMessage = "feat: ".padEnd(60, "x");
 		mockExecFileSync.mockReturnValue(
-			`abc\x1f${longMessage}\x1f1h ago\x1fAuthor\x1e`,
+			`abc\x00${longMessage}\x001h ago\x00Author\x00`,
 		);
 		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
 			Promise.resolve(items[0]),
@@ -396,7 +433,7 @@ describe("rewordCommit", () => {
 	it("should not truncate short commit message in confirmation dialog", async () => {
 		const shortMessage = "fix: short";
 		mockExecFileSync.mockReturnValue(
-			`abc\x1f${shortMessage}\x1f1h ago\x1fAuthor\x1e`,
+			`abc\x00${shortMessage}\x001h ago\x00Author\x00`,
 		);
 		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
 			Promise.resolve(items[0]),
@@ -416,7 +453,7 @@ describe("rewordCommit", () => {
 
 	it("should return when user cancels commit selection", async () => {
 		mockExecFileSync.mockReturnValue(
-			"abc\x1ffeat: test\x1f1h ago\x1fAuthor\x1e",
+			"abc\x00feat: test\x001h ago\x00Author\x00",
 		);
 		mockShowQuickPick.mockResolvedValueOnce(undefined);
 
@@ -428,7 +465,7 @@ describe("rewordCommit", () => {
 
 	it("should return when user declines confirmation", async () => {
 		mockExecFileSync.mockReturnValue(
-			"abc\x1ffeat: test\x1f1h ago\x1fAuthor\x1e",
+			"abc\x00feat: test\x001h ago\x00Author\x00",
 		);
 		// 1 回目の QuickPick は候補先頭を選択
 		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
@@ -445,7 +482,7 @@ describe("rewordCommit", () => {
 
 	it("should run git-sc reword after selection and confirmation", async () => {
 		mockExecFileSync.mockReturnValue(
-			"abc1234\x1ffeat: test\x1f1h ago\x1fAuthor\x1e",
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
 		);
 		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
 			Promise.resolve(items[0]),
@@ -474,7 +511,7 @@ describe("rewordCommit", () => {
 
 	it("should show installation link when reword fails with Windows command-not-found message", async () => {
 		mockExecFileSync.mockReturnValue(
-			"abc1234\x1ffeat: test\x1f1h ago\x1fAuthor\x1e",
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
 		);
 		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
 			Promise.resolve(items[0]),
@@ -504,7 +541,7 @@ describe("rewordCommit", () => {
 
 	it("should handle reword spawn error (ENOENT)", async () => {
 		mockExecFileSync.mockReturnValue(
-			"abc1234\x1ffeat: test\x1f1h ago\x1fAuthor\x1e",
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
 		);
 		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
 			Promise.resolve(items[0]),
@@ -529,7 +566,7 @@ describe("rewordCommit", () => {
 
 	it("should handle reword non-zero exit code", async () => {
 		mockExecFileSync.mockReturnValue(
-			"abc1234\x1ffeat: test\x1f1h ago\x1fAuthor\x1e",
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
 		);
 		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
 			Promise.resolve(items[0]),
@@ -552,7 +589,7 @@ describe("rewordCommit", () => {
 
 	it("should handle reword non-ENOENT spawn error", async () => {
 		mockExecFileSync.mockReturnValue(
-			"abc1234\x1ffeat: test\x1f1h ago\x1fAuthor\x1e",
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
 		);
 		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
 			Promise.resolve(items[0]),
@@ -572,7 +609,7 @@ describe("rewordCommit", () => {
 
 	it("should resolve safely when error fires after reword cancellation", async () => {
 		mockExecFileSync.mockReturnValue(
-			"abc1234\x1ffeat: test\x1f1h ago\x1fAuthor\x1e",
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
 		);
 		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
 			Promise.resolve(items[0]),
@@ -610,7 +647,7 @@ describe("rewordCommit", () => {
 
 	it("should show fallback exit code message when reword stderr and stdout are empty", async () => {
 		mockExecFileSync.mockReturnValue(
-			"abc1234\x1ffeat: test\x1f1h ago\x1fAuthor\x1e",
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
 		);
 		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
 			Promise.resolve(items[0]),
@@ -630,7 +667,7 @@ describe("rewordCommit", () => {
 
 	it("should not show error when reword is cancelled", async () => {
 		mockExecFileSync.mockReturnValue(
-			"abc1234\x1ffeat: test\x1f1h ago\x1fAuthor\x1e",
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
 		);
 		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
 			Promise.resolve(items[0]),
