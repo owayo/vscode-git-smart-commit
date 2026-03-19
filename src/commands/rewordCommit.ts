@@ -27,24 +27,45 @@ function showGitScNotFoundMessage(): void {
 		});
 }
 
+function getCommitCount(workspaceRoot: string): number | null {
+	try {
+		const output = execFileSync("git", ["rev-list", "--count", "--all"], {
+			cwd: workspaceRoot,
+			encoding: "utf-8",
+		}).trim();
+		const count = Number.parseInt(output, 10);
+		return Number.isNaN(count) ? null : count;
+	} catch {
+		return null;
+	}
+}
+
 export function getRecentCommits(
 	workspaceRoot: string,
 	limit: number = 10,
 ): CommitInfo[] {
 	const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 10;
-	const output = execFileSync(
-		"git",
-		[
-			"log",
-			"--format=format:%h%x00%s%x00%cr%x00%an%x00",
-			"-n",
-			String(safeLimit),
-		],
-		{
-			cwd: workspaceRoot,
-			encoding: "utf-8",
-		},
-	);
+	let output: string;
+	try {
+		output = execFileSync(
+			"git",
+			[
+				"log",
+				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
+				"-n",
+				String(safeLimit),
+			],
+			{
+				cwd: workspaceRoot,
+				encoding: "utf-8",
+			},
+		);
+	} catch (error) {
+		if (getCommitCount(workspaceRoot) === 0) {
+			return [];
+		}
+		throw error;
+	}
 
 	const fields = output.split(GIT_LOG_SEPARATOR);
 	const commits: CommitInfo[] = [];

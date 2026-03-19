@@ -81,6 +81,10 @@ function createMockProcess(): ChildProcess & {
 }
 
 describe("getRecentCommits", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
 	it("should parse git log output correctly", () => {
 		mockExecFileSync.mockReturnValue(
 			"abc1234\x00feat: add new feature\x002 hours ago\x00John Doe\x00def5678\x00fix: resolve bug\x001 day ago\x00Jane Smith\x00",
@@ -112,6 +116,58 @@ describe("getRecentCommits", () => {
 
 		expect(() => getRecentCommits("/not-a-repo")).toThrow(
 			"not a git repository",
+		);
+	});
+
+	it("should return empty array when repository has no commits yet", () => {
+		mockExecFileSync
+			.mockImplementationOnce(() => {
+				throw new Error(
+					"fatal: your current branch 'main' does not have any commits yet",
+				);
+			})
+			.mockReturnValueOnce("0\n");
+
+		const commits = getRecentCommits("/workspace");
+
+		expect(commits).toEqual([]);
+		expect(mockExecFileSync).toHaveBeenNthCalledWith(
+			1,
+			"git",
+			["log", "--format=format:%h%x00%s%x00%cr%x00%an%x00", "-n", "10"],
+			{ cwd: "/workspace", encoding: "utf-8" },
+		);
+		expect(mockExecFileSync).toHaveBeenNthCalledWith(
+			2,
+			"git",
+			["rev-list", "--count", "--all"],
+			{ cwd: "/workspace", encoding: "utf-8" },
+		);
+	});
+
+	it("should rethrow the original git log error when empty-history probe fails", () => {
+		mockExecFileSync
+			.mockImplementationOnce(() => {
+				throw new Error("fatal: bad revision 'HEAD'");
+			})
+			.mockImplementationOnce(() => {
+				throw new Error("spawn git ENOENT");
+			});
+
+		expect(() => getRecentCommits("/workspace")).toThrow(
+			"fatal: bad revision 'HEAD'",
+		);
+		expect(mockExecFileSync).toHaveBeenNthCalledWith(
+			1,
+			"git",
+			["log", "--format=format:%h%x00%s%x00%cr%x00%an%x00", "-n", "10"],
+			{ cwd: "/workspace", encoding: "utf-8" },
+		);
+		expect(mockExecFileSync).toHaveBeenNthCalledWith(
+			2,
+			"git",
+			["rev-list", "--count", "--all"],
+			{ cwd: "/workspace", encoding: "utf-8" },
 		);
 	});
 
@@ -264,6 +320,32 @@ describe("getRecentCommits", () => {
 		);
 	});
 
+	it("should rethrow git log error when getCommitCount returns non-numeric output", () => {
+		mockExecFileSync
+			.mockImplementationOnce(() => {
+				throw new Error("fatal: bad object HEAD");
+			})
+			// rev-list が非数値を返す場合（getCommitCount が null を返す）
+			.mockReturnValueOnce("not-a-number\n");
+
+		expect(() => getRecentCommits("/workspace")).toThrow(
+			"fatal: bad object HEAD",
+		);
+	});
+
+	it("should rethrow git log error when repository has commits (getCommitCount > 0)", () => {
+		mockExecFileSync
+			.mockImplementationOnce(() => {
+				throw new Error("fatal: bad default revision 'HEAD'");
+			})
+			// rev-list がコミット数 > 0 を返す場合
+			.mockReturnValueOnce("5\n");
+
+		expect(() => getRecentCommits("/workspace")).toThrow(
+			"fatal: bad default revision 'HEAD'",
+		);
+	});
+
 	it("should handle commit with empty fields gracefully", () => {
 		mockExecFileSync.mockReturnValue("\x00\x00\x00\x00");
 
@@ -362,6 +444,24 @@ describe("rewordCommit", () => {
 		);
 	});
 
+	it("should show warning when repository has no commits yet", async () => {
+		mockExecFileSync
+			.mockImplementationOnce(() => {
+				throw new Error(
+					"fatal: your current branch 'main' does not have any commits yet",
+				);
+			})
+			.mockReturnValueOnce("0\n");
+
+		await rewordCommit(mockOutputChannel as never);
+
+		expect(mockShowWarningMessage).toHaveBeenCalledWith(
+			"No commits found in this repository",
+		);
+		expect(mockShowErrorMessage).not.toHaveBeenCalled();
+		expect(mockShowQuickPick).not.toHaveBeenCalled();
+	});
+
 	it("should show git-not-found error when loading commits fails with ENOENT", async () => {
 		mockExecFileSync.mockImplementation(() => {
 			throw new Error("spawn git ENOENT");
@@ -391,6 +491,27 @@ describe("rewordCommit", () => {
 		);
 		expect(mockShowWarningMessage).not.toHaveBeenCalled();
 		expect(mockShowQuickPick).not.toHaveBeenCalled();
+	});
+
+	it("should preserve the original history-load error when commit count probe fails", async () => {
+		mockExecFileSync
+			.mockImplementationOnce(() => {
+				throw new Error("fatal: bad revision 'HEAD'");
+			})
+			.mockImplementationOnce(() => {
+				throw new Error("spawn git ENOENT");
+			});
+
+		await rewordCommit(mockOutputChannel as never);
+
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"Failed to load commit history: fatal: bad revision 'HEAD'",
+		);
+		expect(mockShowWarningMessage).not.toHaveBeenCalled();
+		expect(mockShowQuickPick).not.toHaveBeenCalled();
+		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
+			"\n❌ Failed to load commit history: fatal: bad revision 'HEAD'",
+		);
 	});
 
 	it("should show 0 commit(s) ago for the latest commit in selection", async () => {
@@ -461,6 +582,22 @@ describe("rewordCommit", () => {
 
 		// QuickPick はコミット選択の 1 回だけ（確認ダイアログは出ない）
 		expect(mockShowQuickPick).toHaveBeenCalledTimes(1);
+	});
+
+	it("should return when user cancels confirmation dialog with escape", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		// 確認ダイアログで Escape を押した場合（undefined が返る）
+		mockShowQuickPick.mockResolvedValueOnce(undefined);
+
+		await rewordCommit(mockOutputChannel as never);
+
+		expect(mockShowQuickPick).toHaveBeenCalledTimes(2);
+		expect(mockWithProgress).not.toHaveBeenCalled();
 	});
 
 	it("should return when user declines confirmation", async () => {

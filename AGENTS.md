@@ -68,6 +68,8 @@ src/
 - Reword commit parsing now handles subjects containing `|` safely.
 - Reword commit parsing now preserves subjects containing field separators (`\x1f`) without shifting `date`/`author`.
 - Reword commit history load errors (e.g., missing `git`) now show explicit error messages instead of "No commits found".
+- Reword Commit now shows a warning instead of an error when the repository has no commits yet, using `git rev-list --count --all` to distinguish empty history from actual failures.
+- Added regression tests to ensure the empty-history fallback does not hide the original `git log` error when the secondary `git rev-list --count --all` probe also fails.
 - Cancellation flow in both commit and reword commands no longer reports failure on normal cancel.
 - Added regression tests for cancellation and reword execution flow.
 - Reword execution now uses static `spawn` import for simpler process flow and testability.
@@ -82,6 +84,8 @@ src/
 - Added test for reword fallback exit code message when stderr/stdout are empty.
 - Fixed git log format to use `format:` prefix (`--format=format:...`) instead of default `tformat:` semantics to prevent terminator newlines from contaminating commit hashes in multi-commit parsing.
 - Added regression test for tformat newline contamination and format prefix verification.
+- Biome updated to 2.4.8.
+- Added edge-case tests for confirmation dialog escape-cancel, `getCommitCount` non-numeric output, and `getCommitCount` returning positive count on git log failure.
 
 ## VS Code Extension Details
 
