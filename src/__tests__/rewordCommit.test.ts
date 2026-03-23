@@ -10,6 +10,7 @@ import {
 } from "../commands/rewordCommit";
 
 const mockSpawn = vi.fn();
+const mockGetGitWorkspaceRoot = vi.fn();
 const mockShowErrorMessage = vi.fn();
 const mockShowWarningMessage = vi.fn();
 const mockShowQuickPick = vi.fn();
@@ -20,6 +21,10 @@ const mockExecuteCommand = vi.fn();
 vi.mock("child_process", () => ({
 	execFileSync: vi.fn(),
 	spawn: (...args: unknown[]) => mockSpawn(...args),
+}));
+
+vi.mock("../commands/getGitWorkspaceRoot", () => ({
+	getGitWorkspaceRoot: (...args: unknown[]) => mockGetGitWorkspaceRoot(...args),
 }));
 
 vi.mock("vscode", () => ({
@@ -83,6 +88,7 @@ function createMockProcess(): ChildProcess & {
 describe("getRecentCommits", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mockGetGitWorkspaceRoot.mockReturnValue("/test/workspace");
 	});
 
 	it("should parse git log output correctly", () => {
@@ -371,6 +377,7 @@ describe("rewordCommit", () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mockGetGitWorkspaceRoot.mockReturnValue("/test/workspace");
 		mockWithProgress.mockImplementation(
 			async (
 				_options: unknown,
@@ -411,6 +418,17 @@ describe("rewordCommit", () => {
 			writable: true,
 			configurable: true,
 		});
+	});
+
+	it("should show error when no Git repository is found in open workspace", async () => {
+		mockGetGitWorkspaceRoot.mockReturnValue(null);
+
+		await rewordCommit(mockOutputChannel as never);
+
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"No Git repository found in open workspace",
+		);
+		expect(mockShowQuickPick).not.toHaveBeenCalled();
 	});
 
 	it("should show error when workspace folders is empty array", async () => {
@@ -644,6 +662,32 @@ describe("rewordCommit", () => {
 			"Commit reworded successfully!",
 		);
 		expect(mockExecuteCommand).toHaveBeenCalledWith("git.refresh");
+	});
+
+	it("should use the resolved Git workspace root for reword", async () => {
+		mockGetGitWorkspaceRoot.mockReturnValue("/test/repo");
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(() => proc.__emit("close", 0), 10);
+		await promise;
+
+		expect(mockSpawn).toHaveBeenCalledWith(
+			"git-sc",
+			["--reword", "abc1234", "-y"],
+			expect.objectContaining({
+				cwd: "/test/repo",
+				shell: true,
+			}),
+		);
 	});
 
 	it("should show installation link when reword fails with Windows command-not-found message", async () => {

@@ -42,11 +42,13 @@ pnpm exec vsce package --no-dependencies
 src/
   extension.ts              # Extension entry point (activate/deactivate)
   commands/
+    getGitWorkspaceRoot.ts  # Resolve the first Git repository root from open workspace folders
     runGitSc.ts             # Core git-sc execution with spawn
     rewordCommit.ts         # Commit reword UI + git log parsing
     isCommandNotFoundError.ts # Cross-platform command-not-found detection
   __tests__/
     extension.test.ts       # Extension activation tests
+    getGitWorkspaceRoot.test.ts # Git workspace root resolution tests
     isCommandNotFoundError.test.ts # Command-not-found判定のテスト
     rewordCommit.test.ts    # getRecentCommits & rewordCommit tests
     runGitSc.test.ts        # runGitSc command tests
@@ -57,6 +59,7 @@ src/
 - Commands are registered in `activate()` and added to `context.subscriptions`
 - External process execution uses `child_process.spawn` with shell mode
 - Commit history loading for reword uses `execFileSync("git", [...])` with explicit args
+- Commands resolve the first reachable Git repository root across open workspace folders before running `git-sc` or `git log`
 - Output is displayed via VS Code `OutputChannel`
 - Progress is shown via `vscode.window.withProgress`
 - Cancellation is guarded to avoid false error notifications after process kill
@@ -86,6 +89,8 @@ src/
 - Added regression test for tformat newline contamination and format prefix verification.
 - Biome updated to 2.4.8.
 - Added edge-case tests for confirmation dialog escape-cancel, `getCommitCount` non-numeric output, and `getCommitCount` returning positive count on git log failure.
+- Added Git workspace root resolution for multi-root workspaces so commands no longer fail when the first folder is outside a repository.
+- Added regression tests for Git workspace root resolution in both direct unit tests and command flows.
 
 ## VS Code Extension Details
 

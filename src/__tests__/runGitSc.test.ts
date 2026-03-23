@@ -4,10 +4,15 @@ import { Readable } from "node:stream";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockSpawn = vi.fn();
+const mockGetGitWorkspaceRoot = vi.fn();
 
 vi.mock("child_process", () => ({
 	spawn: (...args: unknown[]) => mockSpawn(...args),
 	execSync: vi.fn(),
+}));
+
+vi.mock("../commands/getGitWorkspaceRoot", () => ({
+	getGitWorkspaceRoot: (...args: unknown[]) => mockGetGitWorkspaceRoot(...args),
 }));
 
 const mockShowErrorMessage = vi.fn();
@@ -83,6 +88,7 @@ describe("runGitSc", () => {
 
 	beforeEach(async () => {
 		vi.clearAllMocks();
+		mockGetGitWorkspaceRoot.mockReturnValue("/test/workspace");
 		mockOutputChannel = {
 			show: vi.fn(),
 			appendLine: vi.fn(),
@@ -129,6 +135,17 @@ describe("runGitSc", () => {
 		});
 	});
 
+	it("should show error when no Git repository is found in open workspace", async () => {
+		mockGetGitWorkspaceRoot.mockReturnValue(null);
+
+		await runGitSc(mockOutputChannel as never);
+
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"No Git repository found in open workspace",
+		);
+		expect(mockSpawn).not.toHaveBeenCalled();
+	});
+
 	it("should spawn git-sc with -a flag when stageAll is true", async () => {
 		const proc = createMockProcess();
 		mockSpawn.mockReturnValue(proc);
@@ -147,6 +164,28 @@ describe("runGitSc", () => {
 			["-a", "-y"],
 			expect.objectContaining({
 				cwd: "/test/workspace",
+				shell: true,
+			}),
+		);
+	});
+
+	it("should use the resolved Git workspace root", async () => {
+		mockGetGitWorkspaceRoot.mockReturnValue("/test/repo");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => proc.__emit("close", 0), 10);
+		await promise;
+
+		expect(mockSpawn).toHaveBeenCalledWith(
+			"git-sc",
+			["-y"],
+			expect.objectContaining({
+				cwd: "/test/repo",
 				shell: true,
 			}),
 		);

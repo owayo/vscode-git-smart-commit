@@ -1,5 +1,6 @@
 import { execFileSync, spawn } from "child_process";
 import * as vscode from "vscode";
+import { getGitWorkspaceRoot } from "./getGitWorkspaceRoot";
 import { isCommandNotFoundError } from "./isCommandNotFoundError";
 
 export interface CommitInfo {
@@ -103,7 +104,11 @@ export async function rewordCommit(
 		return;
 	}
 
-	const workspaceRoot = workspaceFolders[0].uri.fsPath;
+	const workspaceRoot = getGitWorkspaceRoot(workspaceFolders);
+	if (!workspaceRoot) {
+		vscode.window.showErrorMessage("No Git repository found in open workspace");
+		return;
+	}
 
 	// 直近コミットを取得
 	let commits: CommitInfo[];

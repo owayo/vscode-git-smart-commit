@@ -1,5 +1,6 @@
 import { spawn } from "child_process";
 import * as vscode from "vscode";
+import { getGitWorkspaceRoot } from "./getGitWorkspaceRoot";
 import { isCommandNotFoundError } from "./isCommandNotFoundError";
 
 export interface GitScOptions {
@@ -35,7 +36,12 @@ export async function runGitSc(
 		return;
 	}
 
-	const workspaceRoot = workspaceFolders[0].uri.fsPath;
+	const workspaceRoot = getGitWorkspaceRoot(workspaceFolders);
+	if (!workspaceRoot) {
+		vscode.window.showErrorMessage("No Git repository found in open workspace");
+		return;
+	}
+
 	const config = vscode.workspace.getConfiguration("gitSmartCommit");
 
 	// 実行コマンドの引数を組み立てる
