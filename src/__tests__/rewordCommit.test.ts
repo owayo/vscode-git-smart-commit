@@ -301,8 +301,9 @@ describe("getRecentCommits", () => {
 		);
 	});
 
-	it("should parse commits even when tformat newline appears before the next hash", () => {
-		// tformat: セマンティクス使用時にエントリ間に \n が混入するケースの回帰テスト
+	it("should trim newline from hash when format: inserts separator between commits", () => {
+		// format: はコミット間に改行セパレータを挿入するため、
+		// 2番目以降のハッシュ先頭に改行が混入する → trim で除去する回帰テスト
 		mockExecFileSync.mockReturnValue(
 			"abc1234\x00first\x001h ago\x00Alice\x00\ndef5678\x00second\x002h ago\x00Bob\x00",
 		);
@@ -311,7 +312,7 @@ describe("getRecentCommits", () => {
 
 		expect(commits).toHaveLength(2);
 		expect(commits[0].hash).toBe("abc1234");
-		expect(commits[1].hash).toBe("\ndef5678");
+		expect(commits[1].hash).toBe("def5678");
 	});
 
 	it("should use format: prefix to avoid tformat terminator newlines", () => {

@@ -9,8 +9,8 @@ importers:
   .:
     devDependencies:
       '@biomejs/biome':
-        specifier: ^2.4.8
-        version: 2.4.8
+        specifier: ^2.4.9
+        version: 2.4.9
       '@types/node':
         specifier: ^25.5.0
         version: 25.5.0
@@ -21,14 +21,14 @@ importers:
         specifier: ^3.7.1
         version: 3.7.1
       ovsx:
-        specifier: ^0.10.9
-        version: 0.10.9
+        specifier: ^0.10.10
+        version: 0.10.10
       typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
+        specifier: ^6.0.2
+        version: 6.0.2
       vitest:
-        specifier: ^4.1.0
-        version: 4.1.0(@types/node@25.5.0)(vite@7.3.1(@types/node@25.5.0))
+        specifier: ^4.1.1
+        version: 4.1.1(@types/node@25.5.0)(vite@7.3.1(@types/node@25.5.0))
 
 packages:
 
@@ -90,55 +90,59 @@ packages:
     resolution: {integrity: sha512-qSs4ifwzKJSV39ucNjsvc6WVHs6b7S03sOh2OcHF9UHfVPqWWALUsNUVzhSBiItjRZoLHx7nIarVjqKVusUZ1Q==}
     engines: {node: '>=6.9.0'}
 
-  '@biomejs/biome@2.4.8':
-    resolution: {integrity: sha512-ponn0oKOky1oRXBV+rlSaUlixUxf1aZvWC19Z41zBfUOUesthrQqL3OtiAlSB1EjFjyWpn98Q64DHelhA6jNlA==}
+  '@biomejs/biome@2.4.9':
+    resolution: {integrity: sha512-wvZW92FrwitTcacvCBT8xdAbfbxWfDLwjYMmU3djjqQTh7Ni4ZdiWIT/x5VcZ+RQuxiKzIOzi5D+dcyJDFZMsA==}
     engines: {node: '>=14.21.3'}
     hasBin: true
 
-  '@biomejs/cli-darwin-arm64@2.4.8':
-    resolution: {integrity: sha512-ARx0tECE8I7S2C2yjnWYLNbBdDoPdq3oyNLhMglmuctThwUsuzFWRKrHmIGwIRWKz0Mat9DuzLEDp52hGnrxGQ==}
+  '@biomejs/cli-darwin-arm64@2.4.9':
+    resolution: {integrity: sha512-d5G8Gf2RpH5pYwiHLPA+UpG3G9TLQu4WM+VK6sfL7K68AmhcEQ9r+nkj/DvR/GYhYox6twsHUtmWWWIKfcfQQA==}
     engines: {node: '>=14.21.3'}
     cpu: [arm64]
     os: [darwin]
 
-  '@biomejs/cli-darwin-x64@2.4.8':
-    resolution: {integrity: sha512-Jg9/PsB9vDCJlANE8uhG7qDhb5w0Ix69D7XIIc8IfZPUoiPrbLm33k2Ig3NOJ/7nb3UbesFz3D1aDKm9DvzjhQ==}
+  '@biomejs/cli-darwin-x64@2.4.9':
+    resolution: {integrity: sha512-LNCLNgqDMG7BLdc3a8aY/dwKPK7+R8/JXJoXjCvZh2gx8KseqBdFDKbhrr7HCWF8SzNhbTaALhTBoh/I6rf9lA==}
     engines: {node: '>=14.21.3'}
     cpu: [x64]
     os: [darwin]
 
-  '@biomejs/cli-linux-arm64-musl@2.4.8':
-    resolution: {integrity: sha512-Zo9OhBQDJ3IBGPlqHiTISloo5H0+FBIpemqIJdW/0edJ+gEcLR+MZeZozcUyz3o1nXkVA7++DdRKQT0599j9jA==}
+  '@biomejs/cli-linux-arm64-musl@2.4.9':
+    resolution: {integrity: sha512-8RCww5xnPn2wpK4L/QDGDOW0dq80uVWfppPxHIUg6mOs9B6gRmqPp32h1Ls3T8GnW8Wo5A8u7vpTwz4fExN+sw==}
     engines: {node: '>=14.21.3'}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
-  '@biomejs/cli-linux-arm64@2.4.8':
-    resolution: {integrity: sha512-5CdrsJct76XG2hpKFwXnEtlT1p+4g4yV+XvvwBpzKsTNLO9c6iLlAxwcae2BJ7ekPGWjNGw9j09T5KGPKKxQig==}
+  '@biomejs/cli-linux-arm64@2.4.9':
+    resolution: {integrity: sha512-4adnkAUi6K4C/emPRgYznMOcLlUqZdXWM6aIui4VP4LraE764g6Q4YguygnAUoxKjKIXIWPteKMgRbN0wsgwcg==}
     engines: {node: '>=14.21.3'}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
-  '@biomejs/cli-linux-x64-musl@2.4.8':
-    resolution: {integrity: sha512-Gi8quv8MEuDdKaPFtS2XjEnMqODPsRg6POT6KhoP+VrkNb+T2ywunVB+TvOU0LX1jAZzfBr+3V1mIbBhzAMKvw==}
+  '@biomejs/cli-linux-x64-musl@2.4.9':
+    resolution: {integrity: sha512-5TD+WS9v5vzXKzjetF0hgoaNFHMcpQeBUwKKVi3JbG1e9UCrFuUK3Gt185fyTzvRdwYkJJEMqglRPjmesmVv4A==}
     engines: {node: '>=14.21.3'}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
-  '@biomejs/cli-linux-x64@2.4.8':
-    resolution: {integrity: sha512-PdKXspVEaMCQLjtZCn6vfSck/li4KX9KGwSDbZdgIqlrizJ2MnMcE3TvHa2tVfXNmbjMikzcfJpuPWH695yJrw==}
+  '@biomejs/cli-linux-x64@2.4.9':
+    resolution: {integrity: sha512-L10na7POF0Ks/cgLFNF1ZvIe+X4onLkTi5oP9hY+Rh60Q+7fWzKDDCeGyiHUFf1nGIa9dQOOUPGe2MyYg8nMSQ==}
     engines: {node: '>=14.21.3'}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
-  '@biomejs/cli-win32-arm64@2.4.8':
-    resolution: {integrity: sha512-LoFatS0tnHv6KkCVpIy3qZCih+MxUMvdYiPWLHRri7mhi2vyOOs8OrbZBcLTUEWCS+ktO72nZMy4F96oMhkOHQ==}
+  '@biomejs/cli-win32-arm64@2.4.9':
+    resolution: {integrity: sha512-aDZr0RBC3sMGJOU10BvG7eZIlWLK/i51HRIfScE2lVhfts2dQTreowLiJJd+UYg/tHKxS470IbzpuKmd0MiD6g==}
     engines: {node: '>=14.21.3'}
     cpu: [arm64]
     os: [win32]
 
-  '@biomejs/cli-win32-x64@2.4.8':
-    resolution: {integrity: sha512-vAn7iXDoUbqFXqVocuq1sMYAd33p8+mmurqJkWl6CtIhobd/O6moe4rY5AJvzbunn/qZCdiDVcveqtkFh1e7Hg==}
+  '@biomejs/cli-win32-x64@2.4.9':
+    resolution: {integrity: sha512-NS4g/2G9SoQ4ktKtz31pvyc/rmgzlcIDCGU/zWbmHJAqx6gcRj2gj5Q/guXhoWTzCUaQZDIqiCQXHS7BcGYc0w==}
     engines: {node: '>=14.21.3'}
     cpu: [x64]
     os: [win32]
@@ -367,24 +371,28 @@ packages:
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   '@node-rs/crc32-linux-arm64-musl@1.10.6':
     resolution: {integrity: sha512-k8ra/bmg0hwRrIEE8JL1p32WfaN9gDlUUpQRWsbxd1WhjqvXea7kKO6K4DwVxyxlPhBS9Gkb5Urq7Y4mXANzaw==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   '@node-rs/crc32-linux-x64-gnu@1.10.6':
     resolution: {integrity: sha512-IfjtqcuFK7JrSZ9mlAFhb83xgium30PguvRjIMI45C3FJwu18bnLk1oR619IYb/zetQT82MObgmqfKOtgemEKw==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   '@node-rs/crc32-linux-x64-musl@1.10.6':
     resolution: {integrity: sha512-LbFYsA5M9pNunOweSt6uhxenYQF94v3bHDAQRPTQ3rnjn+mK6IC7YTAYoBjvoJP8lVzcvk9hRj8wp4Jyh6Y80g==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   '@node-rs/crc32-wasm32-wasi@1.10.6':
     resolution: {integrity: sha512-KaejdLgHMPsRaxnM+OG9L9XdWL2TabNx80HLdsCOoX9BVhEkfh39OeahBo8lBmidylKbLGMQoGfIKDjq0YMStw==}
@@ -459,66 +467,79 @@ packages:
     resolution: {integrity: sha512-F8sWbhZ7tyuEfsmOxwc2giKDQzN3+kuBLPwwZGyVkLlKGdV1nvnNwYD0fKQ8+XS6hp9nY7B+ZeK01EBUE7aHaw==}
     cpu: [arm]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-arm-musleabihf@4.57.1':
     resolution: {integrity: sha512-rGfNUfn0GIeXtBP1wL5MnzSj98+PZe/AXaGBCRmT0ts80lU5CATYGxXukeTX39XBKsxzFpEeK+Mrp9faXOlmrw==}
     cpu: [arm]
     os: [linux]
+    libc: [musl]
 
   '@rollup/rollup-linux-arm64-gnu@4.57.1':
     resolution: {integrity: sha512-MMtej3YHWeg/0klK2Qodf3yrNzz6CGjo2UntLvk2RSPlhzgLvYEB3frRvbEF2wRKh1Z2fDIg9KRPe1fawv7C+g==}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-arm64-musl@4.57.1':
     resolution: {integrity: sha512-1a/qhaaOXhqXGpMFMET9VqwZakkljWHLmZOX48R0I/YLbhdxr1m4gtG1Hq7++VhVUmf+L3sTAf9op4JlhQ5u1Q==}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   '@rollup/rollup-linux-loong64-gnu@4.57.1':
     resolution: {integrity: sha512-QWO6RQTZ/cqYtJMtxhkRkidoNGXc7ERPbZN7dVW5SdURuLeVU7lwKMpo18XdcmpWYd0qsP1bwKPf7DNSUinhvA==}
     cpu: [loong64]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-loong64-musl@4.57.1':
     resolution: {integrity: sha512-xpObYIf+8gprgWaPP32xiN5RVTi/s5FCR+XMXSKmhfoJjrpRAjCuuqQXyxUa/eJTdAE6eJ+KDKaoEqjZQxh3Gw==}
     cpu: [loong64]
     os: [linux]
+    libc: [musl]
 
   '@rollup/rollup-linux-ppc64-gnu@4.57.1':
     resolution: {integrity: sha512-4BrCgrpZo4hvzMDKRqEaW1zeecScDCR+2nZ86ATLhAoJ5FQ+lbHVD3ttKe74/c7tNT9c6F2viwB3ufwp01Oh2w==}
     cpu: [ppc64]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-ppc64-musl@4.57.1':
     resolution: {integrity: sha512-NOlUuzesGauESAyEYFSe3QTUguL+lvrN1HtwEEsU2rOwdUDeTMJdO5dUYl/2hKf9jWydJrO9OL/XSSf65R5+Xw==}
     cpu: [ppc64]
     os: [linux]
+    libc: [musl]
 
   '@rollup/rollup-linux-riscv64-gnu@4.57.1':
     resolution: {integrity: sha512-ptA88htVp0AwUUqhVghwDIKlvJMD/fmL/wrQj99PRHFRAG6Z5nbWoWG4o81Nt9FT+IuqUQi+L31ZKAFeJ5Is+A==}
     cpu: [riscv64]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-riscv64-musl@4.57.1':
     resolution: {integrity: sha512-S51t7aMMTNdmAMPpBg7OOsTdn4tySRQvklmL3RpDRyknk87+Sp3xaumlatU+ppQ+5raY7sSTcC2beGgvhENfuw==}
     cpu: [riscv64]
     os: [linux]
+    libc: [musl]
 
   '@rollup/rollup-linux-s390x-gnu@4.57.1':
     resolution: {integrity: sha512-Bl00OFnVFkL82FHbEqy3k5CUCKH6OEJL54KCyx2oqsmZnFTR8IoNqBF+mjQVcRCT5sB6yOvK8A37LNm/kPJiZg==}
     cpu: [s390x]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-x64-gnu@4.57.1':
     resolution: {integrity: sha512-ABca4ceT4N+Tv/GtotnWAeXZUZuM/9AQyCyKYyKnpk4yoA7QIAuBt6Hkgpw8kActYlew2mvckXkvx0FfoInnLg==}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-x64-musl@4.57.1':
     resolution: {integrity: sha512-HFps0JeGtuOR2convgRRkHCekD7j+gdAuXM+/i6kGzQtFhlCtQkpwtNzkNj6QhCDp7DRJ7+qC/1Vg2jt5iSOFw==}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   '@rollup/rollup-openbsd-x64@4.57.1':
     resolution: {integrity: sha512-H+hXEv9gdVQuDTgnqD+SQffoWoc0Of59AStSzTEj/feWTBAnSfSD3+Dql1ZruJQxmykT/JVY0dE8Ka7z0DH1hw==}
@@ -645,34 +666,34 @@ packages:
     resolution: {integrity: sha512-IlqQ/Gv22xUC1r/WQm4StLkYQmaaTsXAhUVsNE0+xiyf0yRFiH5++q78U3bw6bLKDCTmh0uqKB9eG9+Bt75Dkg==}
     engines: {node: '>=20.0.0'}
 
-  '@vitest/expect@4.1.0':
-    resolution: {integrity: sha512-EIxG7k4wlWweuCLG9Y5InKFwpMEOyrMb6ZJ1ihYu02LVj/bzUwn2VMU+13PinsjRW75XnITeFrQBMH5+dLvCDA==}
+  '@vitest/expect@4.1.1':
+    resolution: {integrity: sha512-xAV0fqBTk44Rn6SjJReEQkHP3RrqbJo6JQ4zZ7/uVOiJZRarBtblzrOfFIZeYUrukp2YD6snZG6IBqhOoHTm+A==}
 
-  '@vitest/mocker@4.1.0':
-    resolution: {integrity: sha512-evxREh+Hork43+Y4IOhTo+h5lGmVRyjqI739Rz4RlUPqwrkFFDF6EMvOOYjTx4E8Tl6gyCLRL8Mu7Ry12a13Tw==}
+  '@vitest/mocker@4.1.1':
+    resolution: {integrity: sha512-h3BOylsfsCLPeceuCPAAJ+BvNwSENgJa4hXoXu4im0bs9Lyp4URc4JYK4pWLZ4pG/UQn7AT92K6IByi6rE6g3A==}
     peerDependencies:
       msw: ^2.4.9
-      vite: ^6.0.0 || ^7.0.0 || ^8.0.0-0
+      vite: ^6.0.0 || ^7.0.0 || ^8.0.0
     peerDependenciesMeta:
       msw:
         optional: true
       vite:
         optional: true
 
-  '@vitest/pretty-format@4.1.0':
-    resolution: {integrity: sha512-3RZLZlh88Ib0J7NQTRATfc/3ZPOnSUn2uDBUoGNn5T36+bALixmzphN26OUD3LRXWkJu4H0s5vvUeqBiw+kS0A==}
+  '@vitest/pretty-format@4.1.1':
+    resolution: {integrity: sha512-GM+TEQN5WhOygr1lp7skeVjdLPqqWMHsfzXrcHAqZJi/lIVh63H0kaRCY8MDhNWikx19zBUK8ceaLB7X5AH9NQ==}
 
-  '@vitest/runner@4.1.0':
-    resolution: {integrity: sha512-Duvx2OzQ7d6OjchL+trw+aSrb9idh7pnNfxrklo14p3zmNL4qPCDeIJAK+eBKYjkIwG96Bc6vYuxhqDXQOWpoQ==}
+  '@vitest/runner@4.1.1':
+    resolution: {integrity: sha512-f7+FPy75vN91QGWsITueq0gedwUZy1fLtHOCMeQpjs8jTekAHeKP80zfDEnhrleviLHzVSDXIWuCIOFn3D3f8A==}
 
-  '@vitest/snapshot@4.1.0':
-    resolution: {integrity: sha512-0Vy9euT1kgsnj1CHttwi9i9o+4rRLEaPRSOJ5gyv579GJkNpgJK+B4HSv/rAWixx2wdAFci1X4CEPjiu2bXIMg==}
+  '@vitest/snapshot@4.1.1':
+    resolution: {integrity: sha512-kMVSgcegWV2FibXEx9p9WIKgje58lcTbXgnJixfcg15iK8nzCXhmalL0ZLtTWLW9PH1+1NEDShiFFedB3tEgWg==}
 
-  '@vitest/spy@4.1.0':
-    resolution: {integrity: sha512-pz77k+PgNpyMDv2FV6qmk5ZVau6c3R8HC8v342T2xlFxQKTrSeYw9waIJG8KgV9fFwAtTu4ceRzMivPTH6wSxw==}
+  '@vitest/spy@4.1.1':
+    resolution: {integrity: sha512-6Ti/KT5OVaiupdIZEuZN7l3CZcR0cxnxt70Z0//3CtwgObwA6jZhmVBA3yrXSVN3gmwjgd7oDNLlsXz526gpRA==}
 
-  '@vitest/utils@4.1.0':
-    resolution: {integrity: sha512-XfPXT6a8TZY3dcGY8EdwsBulFCIw+BeeX0RZn2x/BtiY/75YGh8FeWGG8QISN/WhaqSrE2OrlDgtF8q5uhOTmw==}
+  '@vitest/utils@4.1.1':
+    resolution: {integrity: sha512-cNxAlaB3sHoCdL6pj6yyUXv9Gry1NHNg0kFTXdvSIZXLHsqKH7chiWOkwJ5s5+d/oMwcoG9T0bKU38JZWKusrQ==}
 
   '@vscode/vsce-sign-alpine-arm64@2.0.6':
     resolution: {integrity: sha512-wKkJBsvKF+f0GfsUuGT0tSW0kZL87QggEiqNqK6/8hvqsXvpx8OsTEc3mnE1kejkh5r+qUyQ7PtF8jZYN0mo8Q==}
@@ -1403,8 +1424,8 @@ packages:
     resolution: {integrity: sha512-YgBpdJHPyQ2UE5x+hlSXcnejzAvD0b22U2OuAP+8OnlJT+PjWPxtgmGqKKc+RgTM63U9gN0YzrYc71R2WT/hTA==}
     engines: {node: '>=18'}
 
-  ovsx@0.10.9:
-    resolution: {integrity: sha512-gY6912U50YzzNdAEFr9IxAqu59pKySXZzJUxzHRzi3/h/fWFdDDFCCXyjik6VL4TmiVKeor1Yv/cg7I3KfOUuQ==}
+  ovsx@0.10.10:
+    resolution: {integrity: sha512-/X5J4VLKPUGGaMynW9hgvsGg9jmwsK/3RhODeA2yzdeDbb8PUSNcg5GQ9aPDJW/znlqNvAwQcXAyE+Cq0RRvAQ==}
     engines: {node: '>= 20'}
     hasBin: true
 
@@ -1719,8 +1740,8 @@ packages:
   typed-rest-client@1.8.11:
     resolution: {integrity: sha512-5UvfMpd1oelmUPRbbaVnq+rHP7ng2cE4qoQkQeAqxRL6PklkxsM0g32/HL0yfvruK6ojQ5x8EE+HF4YV6DtuCA==}
 
-  typescript@5.9.3:
-    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
+  typescript@6.0.2:
+    resolution: {integrity: sha512-bGdAIrZ0wiGDo5l8c++HWtbaNCWTS4UTv7RaTH/ThVIgjkveJt83m74bBHMJkuCbslY8ixgLBVZJIOiQlQTjfQ==}
     engines: {node: '>=14.17'}
     hasBin: true
 
@@ -1806,21 +1827,21 @@ packages:
       yaml:
         optional: true
 
-  vitest@4.1.0:
-    resolution: {integrity: sha512-YbDrMF9jM2Lqc++2530UourxZHmkKLxrs4+mYhEwqWS97WJ7wOYEkcr+QfRgJ3PW9wz3odRijLZjHEaRLTNbqw==}
+  vitest@4.1.1:
+    resolution: {integrity: sha512-yF+o4POL41rpAzj5KVILUxm1GCjKnELvaqmU9TLLUbMfDzuN0UpUR9uaDs+mCtjPe+uYPksXDRLQGGPvj1cTmA==}
     engines: {node: ^20.0.0 || ^22.0.0 || >=24.0.0}
     hasBin: true
     peerDependencies:
       '@edge-runtime/vm': '*'
       '@opentelemetry/api': ^1.9.0
       '@types/node': ^20.0.0 || ^22.0.0 || >=24.0.0
-      '@vitest/browser-playwright': 4.1.0
-      '@vitest/browser-preview': 4.1.0
-      '@vitest/browser-webdriverio': 4.1.0
-      '@vitest/ui': 4.1.0
+      '@vitest/browser-playwright': 4.1.1
+      '@vitest/browser-preview': 4.1.1
+      '@vitest/browser-webdriverio': 4.1.1
+      '@vitest/ui': 4.1.1
       happy-dom: '*'
       jsdom: '*'
-      vite: ^6.0.0 || ^7.0.0 || ^8.0.0-0
+      vite: ^6.0.0 || ^7.0.0 || ^8.0.0
     peerDependenciesMeta:
       '@edge-runtime/vm':
         optional: true
@@ -1994,39 +2015,39 @@ snapshots:
 
   '@babel/helper-validator-identifier@7.28.5': {}
 
-  '@biomejs/biome@2.4.8':
+  '@biomejs/biome@2.4.9':
     optionalDependencies:
-      '@biomejs/cli-darwin-arm64': 2.4.8
-      '@biomejs/cli-darwin-x64': 2.4.8
-      '@biomejs/cli-linux-arm64': 2.4.8
-      '@biomejs/cli-linux-arm64-musl': 2.4.8
-      '@biomejs/cli-linux-x64': 2.4.8
-      '@biomejs/cli-linux-x64-musl': 2.4.8
-      '@biomejs/cli-win32-arm64': 2.4.8
-      '@biomejs/cli-win32-x64': 2.4.8
+      '@biomejs/cli-darwin-arm64': 2.4.9
+      '@biomejs/cli-darwin-x64': 2.4.9
+      '@biomejs/cli-linux-arm64': 2.4.9
+      '@biomejs/cli-linux-arm64-musl': 2.4.9
+      '@biomejs/cli-linux-x64': 2.4.9
+      '@biomejs/cli-linux-x64-musl': 2.4.9
+      '@biomejs/cli-win32-arm64': 2.4.9
+      '@biomejs/cli-win32-x64': 2.4.9
 
-  '@biomejs/cli-darwin-arm64@2.4.8':
+  '@biomejs/cli-darwin-arm64@2.4.9':
     optional: true
 
-  '@biomejs/cli-darwin-x64@2.4.8':
+  '@biomejs/cli-darwin-x64@2.4.9':
     optional: true
 
-  '@biomejs/cli-linux-arm64-musl@2.4.8':
+  '@biomejs/cli-linux-arm64-musl@2.4.9':
     optional: true
 
-  '@biomejs/cli-linux-arm64@2.4.8':
+  '@biomejs/cli-linux-arm64@2.4.9':
     optional: true
 
-  '@biomejs/cli-linux-x64-musl@2.4.8':
+  '@biomejs/cli-linux-x64-musl@2.4.9':
     optional: true
 
-  '@biomejs/cli-linux-x64@2.4.8':
+  '@biomejs/cli-linux-x64@2.4.9':
     optional: true
 
-  '@biomejs/cli-win32-arm64@2.4.8':
+  '@biomejs/cli-win32-arm64@2.4.9':
     optional: true
 
-  '@biomejs/cli-win32-x64@2.4.8':
+  '@biomejs/cli-win32-x64@2.4.9':
     optional: true
 
   '@emnapi/core@1.8.1':
@@ -2434,44 +2455,44 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@vitest/expect@4.1.0':
+  '@vitest/expect@4.1.1':
     dependencies:
       '@standard-schema/spec': 1.1.0
       '@types/chai': 5.2.3
-      '@vitest/spy': 4.1.0
-      '@vitest/utils': 4.1.0
+      '@vitest/spy': 4.1.1
+      '@vitest/utils': 4.1.1
       chai: 6.2.2
       tinyrainbow: 3.0.3
 
-  '@vitest/mocker@4.1.0(vite@7.3.1(@types/node@25.5.0))':
+  '@vitest/mocker@4.1.1(vite@7.3.1(@types/node@25.5.0))':
     dependencies:
-      '@vitest/spy': 4.1.0
+      '@vitest/spy': 4.1.1
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
       vite: 7.3.1(@types/node@25.5.0)
 
-  '@vitest/pretty-format@4.1.0':
+  '@vitest/pretty-format@4.1.1':
     dependencies:
       tinyrainbow: 3.0.3
 
-  '@vitest/runner@4.1.0':
+  '@vitest/runner@4.1.1':
     dependencies:
-      '@vitest/utils': 4.1.0
+      '@vitest/utils': 4.1.1
       pathe: 2.0.3
 
-  '@vitest/snapshot@4.1.0':
+  '@vitest/snapshot@4.1.1':
     dependencies:
-      '@vitest/pretty-format': 4.1.0
-      '@vitest/utils': 4.1.0
+      '@vitest/pretty-format': 4.1.1
+      '@vitest/utils': 4.1.1
       magic-string: 0.30.21
       pathe: 2.0.3
 
-  '@vitest/spy@4.1.0': {}
+  '@vitest/spy@4.1.1': {}
 
-  '@vitest/utils@4.1.0':
+  '@vitest/utils@4.1.1':
     dependencies:
-      '@vitest/pretty-format': 4.1.0
+      '@vitest/pretty-format': 4.1.1
       convert-source-map: 2.0.0
       tinyrainbow: 3.0.3
 
@@ -3251,7 +3272,7 @@ snapshots:
       is-inside-container: 1.0.0
       wsl-utils: 0.1.0
 
-  ovsx@0.10.9:
+  ovsx@0.10.10:
     dependencies:
       '@vscode/vsce': 3.7.1
       commander: 6.2.1
@@ -3639,7 +3660,7 @@ snapshots:
       tunnel: 0.0.6
       underscore: 1.13.7
 
-  typescript@5.9.3: {}
+  typescript@6.0.2: {}
 
   uc.micro@2.1.0: {}
 
@@ -3681,15 +3702,15 @@ snapshots:
       '@types/node': 25.5.0
       fsevents: 2.3.3
 
-  vitest@4.1.0(@types/node@25.5.0)(vite@7.3.1(@types/node@25.5.0)):
+  vitest@4.1.1(@types/node@25.5.0)(vite@7.3.1(@types/node@25.5.0)):
     dependencies:
-      '@vitest/expect': 4.1.0
-      '@vitest/mocker': 4.1.0(vite@7.3.1(@types/node@25.5.0))
-      '@vitest/pretty-format': 4.1.0
-      '@vitest/runner': 4.1.0
-      '@vitest/snapshot': 4.1.0
-      '@vitest/spy': 4.1.0
-      '@vitest/utils': 4.1.0
+      '@vitest/expect': 4.1.1
+      '@vitest/mocker': 4.1.1(vite@7.3.1(@types/node@25.5.0))
+      '@vitest/pretty-format': 4.1.1
+      '@vitest/runner': 4.1.1
+      '@vitest/snapshot': 4.1.1
+      '@vitest/spy': 4.1.1
+      '@vitest/utils': 4.1.1
       es-module-lexer: 2.0.0
       expect-type: 1.3.0
       magic-string: 0.30.21
