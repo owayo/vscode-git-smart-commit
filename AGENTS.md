@@ -91,6 +91,8 @@ src/
 - Added edge-case tests for confirmation dialog escape-cancel, `getCommitCount` non-numeric output, and `getCommitCount` returning positive count on git log failure.
 - Added Git workspace root resolution for multi-root workspaces so commands no longer fail when the first folder is outside a repository.
 - Added regression tests for Git workspace root resolution in both direct unit tests and command flows.
+- Fixed hash field corruption from `format:` newline separators in multi-commit parsing — 2nd+ commit hashes had a leading `\n` which broke `git-sc --reword`. Applied targeted `replace(/^\n/, "")` instead of broad `trim()`.
+- Added tests for 3+ commits with `format:` newline separators, single commit parsing, and `getGitWorkspaceRoot` single folder / empty string edge cases.
 
 ## VS Code Extension Details
 

@@ -353,6 +353,35 @@ describe("getRecentCommits", () => {
 		);
 	});
 
+	it("should strip newline separators from all hashes in 3+ commit output", () => {
+		// 実際の git log --format=format: 出力を再現: コミット間に \n が挿入される
+		mockExecFileSync.mockReturnValue(
+			"aaa1111\x00first\x001h ago\x00Alice\x00\nbbb2222\x00second\x002h ago\x00Bob\x00\nccc3333\x00third\x003h ago\x00Carol\x00",
+		);
+
+		const commits = getRecentCommits("/workspace");
+
+		expect(commits).toHaveLength(3);
+		expect(commits[0].hash).toBe("aaa1111");
+		expect(commits[1].hash).toBe("bbb2222");
+		expect(commits[2].hash).toBe("ccc3333");
+		// メッセージ・日付・著者が改行の影響を受けていないこと
+		expect(commits[1].message).toBe("second");
+		expect(commits[2].date).toBe("3h ago");
+		expect(commits[2].author).toBe("Carol");
+	});
+
+	it("should handle single commit without newline separator issue", () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: single\x001h ago\x00Author\x00",
+		);
+
+		const commits = getRecentCommits("/workspace");
+
+		expect(commits).toHaveLength(1);
+		expect(commits[0].hash).toBe("abc1234");
+	});
+
 	it("should handle commit with empty fields gracefully", () => {
 		mockExecFileSync.mockReturnValue("\x00\x00\x00\x00");
 

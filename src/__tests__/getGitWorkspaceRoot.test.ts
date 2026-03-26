@@ -48,6 +48,27 @@ describe("getGitWorkspaceRoot", () => {
 		);
 	});
 
+	it("should return the Git root for a single workspace folder", () => {
+		mockExecFileSync.mockReturnValueOnce("/workspace/repo\n");
+
+		const workspaceRoot = getGitWorkspaceRoot([
+			{ uri: { fsPath: "/workspace/repo" } },
+		] as never);
+
+		expect(workspaceRoot).toBe("/workspace/repo");
+		expect(mockExecFileSync).toHaveBeenCalledTimes(1);
+	});
+
+	it("should return null when git rev-parse returns empty string", () => {
+		mockExecFileSync.mockReturnValueOnce("  \n");
+
+		const workspaceRoot = getGitWorkspaceRoot([
+			{ uri: { fsPath: "/workspace/folder" } },
+		] as never);
+
+		expect(workspaceRoot).toBeNull();
+	});
+
 	it("should return null when no workspace folder is inside a Git repository", () => {
 		mockExecFileSync.mockImplementation(() => {
 			throw new Error("fatal: not a git repository");

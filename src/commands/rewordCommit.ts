@@ -77,8 +77,8 @@ export function getRecentCommits(
 		index += 1
 	) {
 		// format: はコミット間に改行セパレータを挿入するため、
-		// 2番目以降のハッシュ先頭に改行が混入する → trim で除去
-		const hash = (fields[fieldIndex] ?? "").trim();
+		// 2番目以降のハッシュ先頭に改行が混入する → 先頭の改行のみ除去
+		const hash = (fields[fieldIndex] ?? "").replace(/^\n/, "");
 		const message = fields[fieldIndex + 1] ?? "";
 		const date = fields[fieldIndex + 2] ?? "";
 		const author = fields[fieldIndex + 3] ?? "";
