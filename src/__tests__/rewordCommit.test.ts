@@ -17,6 +17,8 @@ const mockShowQuickPick = vi.fn();
 const mockShowInformationMessage = vi.fn();
 const mockWithProgress = vi.fn();
 const mockExecuteCommand = vi.fn();
+const mockOpenExternal = vi.fn();
+const mockParseUri = vi.fn((url: string) => url);
 
 vi.mock("child_process", () => ({
 	execFileSync: vi.fn(),
@@ -60,8 +62,8 @@ vi.mock("vscode", () => ({
 	},
 	StatusBarAlignment: { Left: 1, Right: 2 },
 	ProgressLocation: { Notification: 15 },
-	Uri: { parse: vi.fn() },
-	env: { openExternal: vi.fn() },
+	Uri: { parse: (url: string) => mockParseUri(url) },
+	env: { openExternal: (...args: unknown[]) => mockOpenExternal(...args) },
 }));
 
 const mockExecFileSync = vi.mocked(execFileSync);
@@ -747,6 +749,30 @@ describe("rewordCommit", () => {
 		expect(mockShowErrorMessage).toHaveBeenCalledWith(
 			"git-sc command not found. Please install it and ensure it's in your PATH.",
 			"View Installation",
+		);
+	});
+
+	it("should open installation page when user selects installation link after reword failure", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		mockShowErrorMessage.mockResolvedValue("View Installation");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(() => proc.__emit("close", 127), 10);
+
+		await expect(promise).rejects.toThrow();
+		expect(mockParseUri).toHaveBeenCalledWith(
+			"https://github.com/owayo/git-smart-commit#installation",
+		);
+		expect(mockOpenExternal).toHaveBeenCalledWith(
+			"https://github.com/owayo/git-smart-commit#installation",
 		);
 	});
 

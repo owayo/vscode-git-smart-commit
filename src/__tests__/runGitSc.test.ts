@@ -20,6 +20,7 @@ const mockShowInformationMessage = vi.fn();
 const mockWithProgress = vi.fn();
 const mockExecuteCommand = vi.fn();
 const mockOpenExternal = vi.fn();
+const mockParseUri = vi.fn((url: string) => url);
 
 vi.mock("vscode", () => ({
 	window: {
@@ -54,7 +55,7 @@ vi.mock("vscode", () => ({
 	},
 	StatusBarAlignment: { Left: 1, Right: 2 },
 	ProgressLocation: { Notification: 15 },
-	Uri: { parse: vi.fn((url: string) => url) },
+	Uri: { parse: (url: string) => mockParseUri(url) },
 	env: { openExternal: (...args: unknown[]) => mockOpenExternal(...args) },
 }));
 
@@ -279,6 +280,26 @@ describe("runGitSc", () => {
 		expect(mockShowErrorMessage).toHaveBeenCalledWith(
 			"git-sc command not found. Please install it and ensure it's in your PATH.",
 			"View Installation",
+		);
+	});
+
+	it("should open installation page when user selects installation link", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+		mockShowErrorMessage.mockResolvedValue("View Installation");
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => proc.__emit("close", 127), 10);
+
+		await expect(promise).rejects.toThrow();
+		expect(mockParseUri).toHaveBeenCalledWith(
+			"https://github.com/owayo/git-smart-commit#installation",
+		);
+		expect(mockOpenExternal).toHaveBeenCalledWith(
+			"https://github.com/owayo/git-smart-commit#installation",
 		);
 	});
 
