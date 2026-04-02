@@ -81,4 +81,11 @@ describe("getGitWorkspaceRoot", () => {
 
 		expect(workspaceRoot).toBeNull();
 	});
+
+	it("should return null when empty array is passed", () => {
+		const workspaceRoot = getGitWorkspaceRoot([] as never);
+
+		expect(workspaceRoot).toBeNull();
+		expect(mockExecFileSync).not.toHaveBeenCalled();
+	});
 });

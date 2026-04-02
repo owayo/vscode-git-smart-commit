@@ -87,7 +87,7 @@ src/
 - Added test for reword fallback exit code message when stderr/stdout are empty.
 - Fixed git log format to use `format:` prefix (`--format=format:...`) instead of default `tformat:` semantics to prevent terminator newlines from contaminating commit hashes in multi-commit parsing.
 - Added regression test for tformat newline contamination and format prefix verification.
-- Biome updated to 2.4.9.
+- Biome updated to 2.4.10.
 - Vitest updated to 4.1.2.
 - Added edge-case tests for confirmation dialog escape-cancel, `getCommitCount` non-numeric output, and `getCommitCount` returning positive count on git log failure.
 - Added Git workspace root resolution for multi-root workspaces so commands no longer fail when the first folder is outside a repository.
@@ -95,6 +95,9 @@ src/
 - Fixed hash field corruption from `format:` newline separators in multi-commit parsing — 2nd+ commit hashes had a leading `\n` which broke `git-sc --reword`. Applied targeted `replace(/^\n/, "")` instead of broad `trim()`.
 - Added tests for 3+ commits with `format:` newline separators, single commit parsing, and `getGitWorkspaceRoot` single folder / empty string edge cases.
 - Added regression tests that verify the "View Installation" action actually opens the installation guide in both commit and reword failure flows.
+- Added test for `getGitWorkspaceRoot` with empty array input.
+- Added test for `runGitSc` stdout fallback when stderr is empty on failure.
+- Added test for `rewordCommit` close event firing after cancellation.
 
 ## VS Code Extension Details
 

@@ -486,6 +486,25 @@ describe("runGitSc", () => {
 		);
 	});
 
+	it("should use stdout as error message when stderr is empty on failure", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => {
+			proc.stdout?.emit("data", Buffer.from("stdout error detail"));
+			proc.__emit("close", 1);
+		}, 10);
+
+		await expect(promise).rejects.toThrow("stdout error detail");
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"Git Smart Commit failed: stdout error detail",
+		);
+	});
+
 	it("should capture stderr output", async () => {
 		const proc = createMockProcess();
 		mockSpawn.mockReturnValue(proc);

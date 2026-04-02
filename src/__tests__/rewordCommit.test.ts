@@ -902,6 +902,45 @@ describe("rewordCommit", () => {
 		);
 	});
 
+	it("should resolve safely when close fires after reword cancellation", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+		mockWithProgress.mockImplementationOnce(
+			async (
+				_options: unknown,
+				callback: (progress: unknown, token: unknown) => Promise<void>,
+			) => {
+				let cancelHandler: (() => void) | undefined;
+				const progress = { report: vi.fn() };
+				const token = {
+					onCancellationRequested: vi.fn((handler: () => void) => {
+						cancelHandler = handler;
+					}),
+					isCancellationRequested: false,
+				};
+
+				const progressPromise = callback(progress, token);
+				// キャンセル後に close イベントが非ゼロコードで発火するケース
+				cancelHandler?.();
+				setTimeout(() => proc.__emit("close", 1), 10);
+				return progressPromise;
+			},
+		);
+
+		await expect(
+			rewordCommit(mockOutputChannel as never),
+		).resolves.toBeUndefined();
+		expect(proc.kill).toHaveBeenCalled();
+		expect(mockShowErrorMessage).not.toHaveBeenCalled();
+	});
+
 	it("should not show error when reword is cancelled", async () => {
 		mockExecFileSync.mockReturnValue(
 			"abc1234\x00feat: test\x001h ago\x00Author\x00",
