@@ -184,4 +184,29 @@ describe("extension", () => {
 
 		expect(mockStatusBar.hide).toHaveBeenCalled();
 	});
+
+	it("should not update visibility when unrelated config changes", () => {
+		const mockStatusBar = {
+			command: "",
+			text: "",
+			tooltip: "",
+			show: vi.fn(),
+			hide: vi.fn(),
+			dispose: vi.fn(),
+		};
+		mockCreateStatusBarItem.mockReturnValueOnce(mockStatusBar);
+		// 初回の show/hide をリセットするため activate 後にクリア
+		activate(mockContext);
+		mockStatusBar.show.mockClear();
+		mockStatusBar.hide.mockClear();
+
+		const changeCallback = mockOnDidChangeConfiguration.mock.calls[0][0];
+		// 関係ない設定キーが変更された場合
+		changeCallback({
+			affectsConfiguration: (_key: string) => false,
+		});
+
+		expect(mockStatusBar.show).not.toHaveBeenCalled();
+		expect(mockStatusBar.hide).not.toHaveBeenCalled();
+	});
 });

@@ -979,6 +979,61 @@ describe("rewordCommit", () => {
 		expect(mockShowErrorMessage).not.toHaveBeenCalled();
 	});
 
+	it("should call getRecentCommits with limit of 15", async () => {
+		mockExecFileSync.mockReturnValue("");
+
+		await rewordCommit(mockOutputChannel as never);
+
+		// git log コマンドの -n 引数が 15 であることを検証
+		expect(mockExecFileSync).toHaveBeenCalledWith(
+			"git",
+			["log", "--format=format:%h%x00%s%x00%cr%x00%an%x00", "-n", "15"],
+			expect.objectContaining({ encoding: "utf-8" }),
+		);
+	});
+
+	it("should capture reword stdout output", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(() => {
+			proc.stdout?.emit("data", Buffer.from("reword output"));
+			proc.__emit("close", 0);
+		}, 10);
+		await promise;
+
+		expect(mockOutputChannel.append).toHaveBeenCalledWith("reword output");
+	});
+
+	it("should capture reword stderr output", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(() => {
+			proc.stderr?.emit("data", Buffer.from("reword warning"));
+			proc.__emit("close", 0);
+		}, 10);
+		await promise;
+
+		expect(mockOutputChannel.append).toHaveBeenCalledWith("reword warning");
+	});
+
 	it("should show git-not-found error when getGitWorkspaceRoot throws ENOENT", async () => {
 		mockGetGitWorkspaceRoot.mockImplementation(() => {
 			throw new Error("spawn git ENOENT");

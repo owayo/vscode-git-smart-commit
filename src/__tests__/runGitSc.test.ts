@@ -641,6 +641,44 @@ describe("runGitSc", () => {
 		expect(mockShowErrorMessage).not.toHaveBeenCalled();
 	});
 
+	it("should not include -a flag when stageAll is false", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			stageAll: false,
+			autoConfirm: true,
+		});
+
+		setTimeout(() => proc.__emit("close", 0), 10);
+		await promise;
+
+		expect(mockSpawn).toHaveBeenCalledWith(
+			"git-sc",
+			["-y"],
+			expect.objectContaining({ shell: true }),
+		);
+	});
+
+	it("should not include -b flag when includeBody is false", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			includeBody: false,
+			autoConfirm: true,
+		});
+
+		setTimeout(() => proc.__emit("close", 0), 10);
+		await promise;
+
+		expect(mockSpawn).toHaveBeenCalledWith(
+			"git-sc",
+			["-y"],
+			expect.objectContaining({ shell: true }),
+		);
+	});
+
 	it("should show git-not-found error when getGitWorkspaceRoot throws ENOENT", async () => {
 		mockGetGitWorkspaceRoot.mockImplementation(() => {
 			throw new Error("spawn git ENOENT");
