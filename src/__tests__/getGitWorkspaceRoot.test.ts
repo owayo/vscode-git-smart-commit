@@ -33,7 +33,7 @@ describe("getGitWorkspaceRoot", () => {
 			{
 				cwd: "/workspace/plain",
 				encoding: "utf-8",
-				stdio: ["ignore", "pipe", "ignore"],
+				stdio: ["ignore", "pipe", "pipe"],
 			},
 		);
 		expect(mockExecFileSync).toHaveBeenNthCalledWith(
@@ -43,7 +43,7 @@ describe("getGitWorkspaceRoot", () => {
 			{
 				cwd: "/workspace/repo/packages/app",
 				encoding: "utf-8",
-				stdio: ["ignore", "pipe", "ignore"],
+				stdio: ["ignore", "pipe", "pipe"],
 			},
 		);
 	});
@@ -87,5 +87,44 @@ describe("getGitWorkspaceRoot", () => {
 
 		expect(workspaceRoot).toBeNull();
 		expect(mockExecFileSync).not.toHaveBeenCalled();
+	});
+
+	it("should throw ENOENT error when git is not installed", () => {
+		mockExecFileSync.mockImplementation(() => {
+			throw new Error("spawn git ENOENT");
+		});
+
+		expect(() =>
+			getGitWorkspaceRoot([{ uri: { fsPath: "/workspace/folder" } }] as never),
+		).toThrow("spawn git ENOENT");
+	});
+
+	it("should throw permission error instead of returning null", () => {
+		mockExecFileSync.mockImplementation(() => {
+			throw new Error(
+				"fatal: unsafe repository ('/workspace/repo' is owned by someone else)",
+			);
+		});
+
+		expect(() =>
+			getGitWorkspaceRoot([{ uri: { fsPath: "/workspace/repo" } }] as never),
+		).toThrow("unsafe repository");
+	});
+
+	it("should skip not-a-git-repository error and throw on subsequent ENOENT", () => {
+		mockExecFileSync
+			.mockImplementationOnce(() => {
+				throw new Error("fatal: not a git repository");
+			})
+			.mockImplementationOnce(() => {
+				throw new Error("spawn git ENOENT");
+			});
+
+		expect(() =>
+			getGitWorkspaceRoot([
+				{ uri: { fsPath: "/workspace/plain" } },
+				{ uri: { fsPath: "/workspace/other" } },
+			] as never),
+		).toThrow("spawn git ENOENT");
 	});
 });

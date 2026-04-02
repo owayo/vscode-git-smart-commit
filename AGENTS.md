@@ -98,6 +98,9 @@ src/
 - Added test for `getGitWorkspaceRoot` with empty array input.
 - Added test for `runGitSc` stdout fallback when stderr is empty on failure.
 - Added test for `rewordCommit` close event firing after cancellation.
+- Fixed `getGitWorkspaceRoot` to distinguish "not a git repository" errors from other failures (ENOENT, permission errors). Previously all `execFileSync` exceptions were silently swallowed, causing misleading "No Git repository found" messages when git was not installed or access was denied.
+- Added error handling in `runGitSc` and `rewordCommit` callers to show appropriate messages for git-not-found vs generic git errors from workspace root detection.
+- Added regression tests for ENOENT, permission error, and mixed error scenarios in `getGitWorkspaceRoot`, `runGitSc`, and `rewordCommit`.
 
 ## VS Code Extension Details
 

@@ -640,4 +640,32 @@ describe("runGitSc", () => {
 		expect(proc.kill).toHaveBeenCalled();
 		expect(mockShowErrorMessage).not.toHaveBeenCalled();
 	});
+
+	it("should show git-not-found error when getGitWorkspaceRoot throws ENOENT", async () => {
+		mockGetGitWorkspaceRoot.mockImplementation(() => {
+			throw new Error("spawn git ENOENT");
+		});
+
+		await runGitSc(mockOutputChannel as never);
+
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"Git command not found. Please install Git and ensure it's in your PATH.",
+		);
+		expect(mockSpawn).not.toHaveBeenCalled();
+	});
+
+	it("should show generic error when getGitWorkspaceRoot throws non-ENOENT error", async () => {
+		mockGetGitWorkspaceRoot.mockImplementation(() => {
+			throw new Error(
+				"fatal: unsafe repository ('/repo' is owned by someone else)",
+			);
+		});
+
+		await runGitSc(mockOutputChannel as never);
+
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"Failed to detect Git repository: fatal: unsafe repository ('/repo' is owned by someone else)",
+		);
+		expect(mockSpawn).not.toHaveBeenCalled();
+	});
 });

@@ -36,7 +36,22 @@ export async function runGitSc(
 		return;
 	}
 
-	const workspaceRoot = getGitWorkspaceRoot(workspaceFolders);
+	let workspaceRoot: string | null;
+	try {
+		workspaceRoot = getGitWorkspaceRoot(workspaceFolders);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		if (message.includes("ENOENT")) {
+			vscode.window.showErrorMessage(
+				"Git command not found. Please install Git and ensure it's in your PATH.",
+			);
+		} else {
+			vscode.window.showErrorMessage(
+				`Failed to detect Git repository: ${message.substring(0, 100)}`,
+			);
+		}
+		return;
+	}
 	if (!workspaceRoot) {
 		vscode.window.showErrorMessage("No Git repository found in open workspace");
 		return;
