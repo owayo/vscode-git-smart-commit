@@ -111,6 +111,18 @@ describe("getGitWorkspaceRoot", () => {
 		).toThrow("unsafe repository");
 	});
 
+	it("should handle case-insensitive 'not a git repository' error", () => {
+		mockExecFileSync.mockImplementation(() => {
+			throw new Error("fatal: Not A Git Repository (or any parent)");
+		});
+
+		const workspaceRoot = getGitWorkspaceRoot([
+			{ uri: { fsPath: "/workspace/folder" } },
+		] as never);
+
+		expect(workspaceRoot).toBeNull();
+	});
+
 	it("should skip not-a-git-repository error and throw on subsequent ENOENT", () => {
 		mockExecFileSync
 			.mockImplementationOnce(() => {

@@ -1061,4 +1061,51 @@ describe("rewordCommit", () => {
 		);
 		expect(mockShowQuickPick).not.toHaveBeenCalled();
 	});
+
+	it("should use stdout as reword error message when stderr is empty on failure", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(() => {
+			proc.stdout?.emit("data", Buffer.from("stdout reword detail"));
+			proc.__emit("close", 1);
+		}, 10);
+
+		await expect(promise).rejects.toThrow("stdout reword detail");
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"Reword failed: stdout reword detail",
+		);
+	});
+
+	it("should set FORCE_COLOR=0 in reword process env", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(() => proc.__emit("close", 0), 10);
+		await promise;
+
+		expect(mockSpawn).toHaveBeenCalledWith(
+			"git-sc",
+			expect.any(Array),
+			expect.objectContaining({
+				env: expect.objectContaining({ FORCE_COLOR: "0" }),
+			}),
+		);
+	});
 });

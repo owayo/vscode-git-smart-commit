@@ -104,6 +104,10 @@ src/
 - Added test for config change callback no-op when unrelated configuration key changes.
 - Added tests for explicit `stageAll: false` and `includeBody: false` verifying flags are excluded.
 - Added tests for reword stdout/stderr capture and `rewordCommit` calling `getRecentCommits` with limit=15.
+- @types/node updated to 25.5.2.
+- Added test for reword stdout fallback when stderr is empty on failure.
+- Added test for `FORCE_COLOR=0` env in reword process spawn.
+- Added test for case-insensitive "not a git repository" matching in `getGitWorkspaceRoot`.
 
 ## VS Code Extension Details
 
