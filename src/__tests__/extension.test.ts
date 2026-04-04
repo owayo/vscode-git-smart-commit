@@ -185,6 +185,40 @@ describe("extension", () => {
 		expect(mockStatusBar.hide).toHaveBeenCalled();
 	});
 
+	it("should set correct status bar properties", () => {
+		const mockStatusBar = {
+			command: "",
+			text: "",
+			tooltip: "",
+			show: vi.fn(),
+			hide: vi.fn(),
+			dispose: vi.fn(),
+		};
+		mockCreateStatusBarItem.mockReturnValueOnce(mockStatusBar);
+
+		activate(mockContext);
+
+		expect(mockStatusBar.command).toBe("git-smart-commit.runAddAutoConfirm");
+		expect(mockStatusBar.text).toBe("$(sparkle) git-sc");
+		expect(mockStatusBar.tooltip).toBe("Git Smart Commit (-a -y)");
+	});
+
+	it("should log activation message to output channel", () => {
+		const mockChannel = {
+			show: vi.fn(),
+			appendLine: vi.fn(),
+			append: vi.fn(),
+			dispose: vi.fn(),
+		};
+		mockCreateOutputChannel.mockReturnValueOnce(mockChannel);
+
+		activate(mockContext);
+
+		expect(mockChannel.appendLine).toHaveBeenCalledWith(
+			"Git Smart Commit extension activated",
+		);
+	});
+
 	it("should not update visibility when unrelated config changes", () => {
 		const mockStatusBar = {
 			command: "",

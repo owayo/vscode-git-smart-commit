@@ -679,6 +679,43 @@ describe("runGitSc", () => {
 		);
 	});
 
+	it("should accumulate chunked stdout data on success", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => {
+			proc.stdout?.emit("data", Buffer.from("chunk1"));
+			proc.stdout?.emit("data", Buffer.from("chunk2"));
+			proc.__emit("close", 0);
+		}, 10);
+
+		await promise;
+
+		expect(mockOutputChannel.append).toHaveBeenCalledWith("chunk1");
+		expect(mockOutputChannel.append).toHaveBeenCalledWith("chunk2");
+	});
+
+	it("should accumulate chunked stderr data on failure", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => {
+			proc.stderr?.emit("data", Buffer.from("err1"));
+			proc.stderr?.emit("data", Buffer.from("err2"));
+			proc.__emit("close", 1);
+		}, 10);
+
+		await expect(promise).rejects.toThrow("err1err2");
+	});
+
 	it("should show git-not-found error when getGitWorkspaceRoot throws ENOENT", async () => {
 		mockGetGitWorkspaceRoot.mockImplementation(() => {
 			throw new Error("spawn git ENOENT");

@@ -108,6 +108,9 @@ src/
 - Added test for reword stdout fallback when stderr is empty on failure.
 - Added test for `FORCE_COLOR=0` env in reword process spawn.
 - Added test for case-insensitive "not a git repository" matching in `getGitWorkspaceRoot`.
+- Added tests for status bar item properties (command, text, tooltip) and activation log message.
+- Added tests for chunked stdout/stderr data accumulation in `runGitSc`.
+- Added tests for incomplete/partial field handling in `getRecentCommits` parsing.
 
 ## VS Code Extension Details
 

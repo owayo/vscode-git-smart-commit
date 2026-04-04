@@ -384,6 +384,25 @@ describe("getRecentCommits", () => {
 		expect(commits[0].hash).toBe("abc1234");
 	});
 
+	it("should skip incomplete fields when output has fewer than 4 fields", () => {
+		// ハッシュとメッセージのみ（日付・作者なし）→ コミットとして認識しない
+		mockExecFileSync.mockReturnValue("abc1234\x00partial message\x00");
+
+		const commits = getRecentCommits("/workspace");
+		expect(commits).toHaveLength(0);
+	});
+
+	it("should parse complete commits and ignore trailing incomplete fields", () => {
+		// 1件の完全なコミット + 不完全なフィールド
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: complete\x002h ago\x00Author\x00def5678\x00orphan",
+		);
+
+		const commits = getRecentCommits("/workspace");
+		expect(commits).toHaveLength(1);
+		expect(commits[0].hash).toBe("abc1234");
+	});
+
 	it("should handle commit with empty fields gracefully", () => {
 		mockExecFileSync.mockReturnValue("\x00\x00\x00\x00");
 
