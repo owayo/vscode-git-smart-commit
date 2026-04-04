@@ -403,6 +403,18 @@ describe("getRecentCommits", () => {
 		expect(commits[0].hash).toBe("abc1234");
 	});
 
+	it("should fallback to default limit when Infinity is passed", () => {
+		mockExecFileSync.mockReturnValue("abc\x00msg\x001h ago\x00Author\x00");
+
+		getRecentCommits("/workspace", Number.POSITIVE_INFINITY);
+
+		expect(mockExecFileSync).toHaveBeenCalledWith(
+			"git",
+			["log", "--format=format:%h%x00%s%x00%cr%x00%an%x00", "-n", "10"],
+			{ cwd: "/workspace", encoding: "utf-8" },
+		);
+	});
+
 	it("should handle commit with empty fields gracefully", () => {
 		mockExecFileSync.mockReturnValue("\x00\x00\x00\x00");
 
@@ -1102,6 +1114,65 @@ describe("rewordCommit", () => {
 		expect(mockShowErrorMessage).toHaveBeenCalledWith(
 			"Reword failed: stdout reword detail",
 		);
+	});
+
+	it("should not open external URL when user dismisses installation dialog after reword failure", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		// ユーザーがダイアログを閉じた場合（undefined が返る）
+		mockShowErrorMessage.mockResolvedValue(undefined);
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(() => proc.__emit("close", 127), 10);
+
+		await expect(promise).rejects.toThrow();
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"git-sc command not found. Please install it and ensure it's in your PATH.",
+			"View Installation",
+		);
+		expect(mockOpenExternal).not.toHaveBeenCalled();
+	});
+
+	it("should report progress message with commit hash during reword", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+		const mockProgressReport = vi.fn();
+
+		mockWithProgress.mockImplementationOnce(
+			async (
+				_options: unknown,
+				callback: (progress: unknown, token: unknown) => unknown,
+			) => {
+				const progress = { report: mockProgressReport };
+				const token = {
+					onCancellationRequested: vi.fn(),
+					isCancellationRequested: false,
+				};
+				return callback(progress, token);
+			},
+		);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(() => proc.__emit("close", 0), 10);
+		await promise;
+
+		expect(mockProgressReport).toHaveBeenCalledWith({
+			message: "Rewording commit abc1234...",
+		});
 	});
 
 	it("should set FORCE_COLOR=0 in reword process env", async () => {

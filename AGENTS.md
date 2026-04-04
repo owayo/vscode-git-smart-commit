@@ -111,6 +111,9 @@ src/
 - Added tests for status bar item properties (command, text, tooltip) and activation log message.
 - Added tests for chunked stdout/stderr data accumulation in `runGitSc`.
 - Added tests for incomplete/partial field handling in `getRecentCommits` parsing.
+- Added test for installation dialog dismissal (openExternal not called when user dismisses) in both `runGitSc` and `rewordCommit`.
+- Added test for `progress.report` message content verification in both `runGitSc` and `rewordCommit`.
+- Added test for `getRecentCommits` `Infinity` limit fallback to default.
 
 ## VS Code Extension Details
 

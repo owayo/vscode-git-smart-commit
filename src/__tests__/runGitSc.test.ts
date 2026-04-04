@@ -729,6 +729,57 @@ describe("runGitSc", () => {
 		expect(mockSpawn).not.toHaveBeenCalled();
 	});
 
+	it("should not open external URL when user dismisses installation dialog", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+		// ユーザーがダイアログを閉じた場合（undefined が返る）
+		mockShowErrorMessage.mockResolvedValue(undefined);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => proc.__emit("close", 127), 10);
+
+		await expect(promise).rejects.toThrow();
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"git-sc command not found. Please install it and ensure it's in your PATH.",
+			"View Installation",
+		);
+		expect(mockOpenExternal).not.toHaveBeenCalled();
+	});
+
+	it("should report progress message when spawning git-sc", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+		const mockProgressReport = vi.fn();
+
+		mockWithProgress.mockImplementationOnce(
+			async (
+				_options: unknown,
+				callback: (progress: unknown, token: unknown) => unknown,
+			) => {
+				const progress = { report: mockProgressReport };
+				const token = {
+					onCancellationRequested: vi.fn(),
+					isCancellationRequested: false,
+				};
+				return callback(progress, token);
+			},
+		);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => proc.__emit("close", 0), 10);
+		await promise;
+
+		expect(mockProgressReport).toHaveBeenCalledWith({
+			message: "Generating commit message...",
+		});
+	});
+
 	it("should show generic error when getGitWorkspaceRoot throws non-ENOENT error", async () => {
 		mockGetGitWorkspaceRoot.mockImplementation(() => {
 			throw new Error(
