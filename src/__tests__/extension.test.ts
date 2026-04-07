@@ -263,10 +263,9 @@ describe("extension", () => {
 		activate(mockContext);
 
 		// 登録されたコマンド名とコールバックのペアを取得
+		const calls = mockRegisterCommand.mock.calls as unknown[][];
 		const registeredHandlers = new Map(
-			mockRegisterCommand.mock.calls.map(
-				(call: [string, () => void]) => [call[0], call[1]] as const,
-			),
+			calls.map((call) => [call[0] as string, call[1] as () => void] as const),
 		);
 
 		// 5 つのコマンドがすべて登録されていること
@@ -290,13 +289,14 @@ describe("extension", () => {
 		activate(mockContext);
 
 		// コマンドハンドラを取得して呼び出し — エラーが握りつぶされることを確認
-		const handler = mockRegisterCommand.mock.calls.find(
-			(call: [string, () => void]) =>
-				call[0] === "git-smart-commit.runAddAutoConfirm",
-		)?.[1];
+		const calls = mockRegisterCommand.mock.calls as unknown[][];
+		const match = calls.find(
+			(call) => call[0] === "git-smart-commit.runAddAutoConfirm",
+		);
+		const handler = match?.[1] as (() => Promise<void>) | undefined;
 
 		expect(handler).toBeDefined();
 		// ハンドラ内で runGitSc がエラーを返しても例外にならないこと
-		await expect(handler()).resolves.toBeUndefined();
+		await expect(handler!()).resolves.toBeUndefined();
 	});
 });
