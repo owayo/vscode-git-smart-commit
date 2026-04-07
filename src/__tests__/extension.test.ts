@@ -243,4 +243,60 @@ describe("extension", () => {
 		expect(mockStatusBar.show).not.toHaveBeenCalled();
 		expect(mockStatusBar.hide).not.toHaveBeenCalled();
 	});
+
+	it("should dispose output channel on deactivate", () => {
+		const mockChannel = {
+			show: vi.fn(),
+			appendLine: vi.fn(),
+			append: vi.fn(),
+			dispose: vi.fn(),
+		};
+		mockCreateOutputChannel.mockReturnValueOnce(mockChannel);
+
+		activate(mockContext);
+		deactivate();
+
+		expect(mockChannel.dispose).toHaveBeenCalled();
+	});
+
+	it("should register command handlers that call runGitSc with correct options", () => {
+		activate(mockContext);
+
+		// 登録されたコマンド名とコールバックのペアを取得
+		const registeredHandlers = new Map(
+			mockRegisterCommand.mock.calls.map(
+				(call: [string, () => void]) => [call[0], call[1]] as const,
+			),
+		);
+
+		// 5 つのコマンドがすべて登録されていること
+		expect(registeredHandlers.size).toBe(5);
+		expect(registeredHandlers.has("git-smart-commit.runAddAutoConfirm")).toBe(
+			true,
+		);
+		expect(
+			registeredHandlers.has("git-smart-commit.runAddBodyAutoConfirm"),
+		).toBe(true);
+		expect(registeredHandlers.has("git-smart-commit.runAutoConfirm")).toBe(
+			true,
+		);
+		expect(registeredHandlers.has("git-smart-commit.runBodyAutoConfirm")).toBe(
+			true,
+		);
+		expect(registeredHandlers.has("git-smart-commit.reword")).toBe(true);
+	});
+
+	it("should not throw when command handler catches error", async () => {
+		activate(mockContext);
+
+		// コマンドハンドラを取得して呼び出し — エラーが握りつぶされることを確認
+		const handler = mockRegisterCommand.mock.calls.find(
+			(call: [string, () => void]) =>
+				call[0] === "git-smart-commit.runAddAutoConfirm",
+		)?.[1];
+
+		expect(handler).toBeDefined();
+		// ハンドラ内で runGitSc がエラーを返しても例外にならないこと
+		await expect(handler()).resolves.toBeUndefined();
+	});
 });

@@ -94,4 +94,20 @@ describe("isCommandNotFoundError", () => {
 	it("returns false for empty error message with non-matching exit code", () => {
 		expect(isCommandNotFoundError(1, "")).toBe(false);
 	});
+
+	it("returns true when both exit code and message match", () => {
+		// 終了コード 127 とメッセージの両方が一致するケース
+		expect(isCommandNotFoundError(127, "bash: git-sc: command not found")).toBe(
+			true,
+		);
+	});
+
+	it("returns true for exit code 127 with empty error message", () => {
+		// 終了コードのみで判定できるケース
+		expect(isCommandNotFoundError(127, "")).toBe(true);
+	});
+
+	it("returns true for exit code 9009 with empty error message", () => {
+		expect(isCommandNotFoundError(9009, "")).toBe(true);
+	});
 });

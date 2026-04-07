@@ -780,6 +780,23 @@ describe("runGitSc", () => {
 		});
 	});
 
+	it("should not include -a flag when stageAll is undefined", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			includeBody: true,
+		});
+
+		setTimeout(() => proc.__emit("close", 0), 10);
+		await promise;
+
+		// stageAll 未指定時は -a フラグが含まれない
+		const args = mockSpawn.mock.calls[0][1] as string[];
+		expect(args).not.toContain("-a");
+		expect(args).toContain("-b");
+	});
+
 	it("should show generic error when getGitWorkspaceRoot throws non-ENOENT error", async () => {
 		mockGetGitWorkspaceRoot.mockImplementation(() => {
 			throw new Error(

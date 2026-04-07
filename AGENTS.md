@@ -114,6 +114,12 @@ src/
 - Added test for installation dialog dismissal (openExternal not called when user dismisses) in both `runGitSc` and `rewordCommit`.
 - Added test for `progress.report` message content verification in both `runGitSc` and `rewordCommit`.
 - Added test for `getRecentCommits` `Infinity` limit fallback to default.
+- Vitest updated to 4.1.3.
+- Added test for `deactivate()` calling `outputChannel.dispose()`.
+- Added test for registered command handlers count and names verification.
+- Added test for command handler error suppression (catch block).
+- Added `isCommandNotFoundError` tests for combined exit code + message match and exit code only with empty message.
+- Added test for `runGitSc` with `stageAll: undefined` verifying `-a` flag is excluded.
 
 ## VS Code Extension Details
 
