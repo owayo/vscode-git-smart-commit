@@ -797,6 +797,26 @@ describe("runGitSc", () => {
 		expect(args).toContain("-b");
 	});
 
+	it("should truncate long error message to 100 characters", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		const longError = "x".repeat(200);
+		setTimeout(() => {
+			proc.stderr?.emit("data", Buffer.from(longError));
+			proc.__emit("close", 1);
+		}, 10);
+
+		await expect(promise).rejects.toThrow();
+		// エラーメッセージが 100 文字で切り詰められていることを検証
+		const errorArg = mockShowErrorMessage.mock.calls[0][0] as string;
+		expect(errorArg).toBe(`Git Smart Commit failed: ${"x".repeat(100)}`);
+	});
+
 	it("should show generic error when getGitWorkspaceRoot throws non-ENOENT error", async () => {
 		mockGetGitWorkspaceRoot.mockImplementation(() => {
 			throw new Error(

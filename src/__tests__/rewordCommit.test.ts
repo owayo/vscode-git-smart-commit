@@ -1198,4 +1198,73 @@ describe("rewordCommit", () => {
 			}),
 		);
 	});
+
+	it("should truncate long reword error message to 100 characters", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		const longError = "y".repeat(200);
+		setTimeout(() => {
+			proc.stderr?.emit("data", Buffer.from(longError));
+			proc.__emit("close", 1);
+		}, 10);
+
+		await expect(promise).rejects.toThrow();
+		// エラーメッセージが 100 文字で切り詰められていることを検証
+		const errorArg = mockShowErrorMessage.mock.calls[0][0] as string;
+		expect(errorArg).toBe(`Reword failed: ${"y".repeat(100)}`);
+	});
+
+	it("should pass matchOnDescription and matchOnDetail to QuickPick", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce(
+			(_items: unknown[], options: Record<string, unknown>) => {
+				expect(options.matchOnDescription).toBe(true);
+				expect(options.matchOnDetail).toBe(true);
+				return Promise.resolve(undefined);
+			},
+		);
+
+		await rewordCommit(mockOutputChannel as never);
+
+		expect(mockShowQuickPick).toHaveBeenCalledTimes(1);
+	});
+
+	it("should format QuickPick item label with git-commit icon prefix", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: nice feature\x002h ago\x00Alice\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) => {
+			const item = (items as Array<{ label: string; description: string }>)[0];
+			expect(item.label).toBe("$(git-commit) feat: nice feature");
+			expect(item.description).toBe("abc1234 • 2h ago");
+			return Promise.resolve(undefined);
+		});
+
+		await rewordCommit(mockOutputChannel as never);
+	});
+
+	it("should truncate long getGitWorkspaceRoot error message to 100 characters", async () => {
+		const longError = "z".repeat(200);
+		mockGetGitWorkspaceRoot.mockImplementation(() => {
+			throw new Error(longError);
+		});
+
+		await rewordCommit(mockOutputChannel as never);
+
+		const errorArg = mockShowErrorMessage.mock.calls[0][0] as string;
+		expect(errorArg).toBe(
+			`Failed to detect Git repository: ${"z".repeat(100)}`,
+		);
+	});
 });

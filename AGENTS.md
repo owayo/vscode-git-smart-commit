@@ -120,6 +120,12 @@ src/
 - Added test for command handler error suppression (catch block).
 - Added `isCommandNotFoundError` tests for combined exit code + message match and exit code only with empty message.
 - Added test for `runGitSc` with `stageAll: undefined` verifying `-a` flag is excluded.
+- Fixed `getGitWorkspaceRoot` to set `LC_ALL=C` and `LANG=C` when invoking git, so that localized (e.g., Japanese) error messages do not break the "not a git repository" detection in multi-root workspaces.
+- Added test for `LC_ALL=C` / `LANG=C` env verification in `getGitWorkspaceRoot`.
+- Added tests for error message truncation at 100 characters in both `runGitSc` and `rewordCommit`.
+- Added test for QuickPick `matchOnDescription` and `matchOnDetail` options in `rewordCommit`.
+- Added test for QuickPick item label format (git-commit icon prefix) and description format in `rewordCommit`.
+- Added test for `getGitWorkspaceRoot` error message truncation at 100 characters in `rewordCommit`.
 
 ## VS Code Extension Details
 

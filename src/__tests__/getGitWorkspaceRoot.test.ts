@@ -30,21 +30,23 @@ describe("getGitWorkspaceRoot", () => {
 			1,
 			"git",
 			["rev-parse", "--show-toplevel"],
-			{
+			expect.objectContaining({
 				cwd: "/workspace/plain",
 				encoding: "utf-8",
 				stdio: ["ignore", "pipe", "pipe"],
-			},
+				env: expect.objectContaining({ LC_ALL: "C", LANG: "C" }),
+			}),
 		);
 		expect(mockExecFileSync).toHaveBeenNthCalledWith(
 			2,
 			"git",
 			["rev-parse", "--show-toplevel"],
-			{
+			expect.objectContaining({
 				cwd: "/workspace/repo/packages/app",
 				encoding: "utf-8",
 				stdio: ["ignore", "pipe", "pipe"],
-			},
+				env: expect.objectContaining({ LC_ALL: "C", LANG: "C" }),
+			}),
 		);
 	});
 
@@ -121,6 +123,19 @@ describe("getGitWorkspaceRoot", () => {
 		] as never);
 
 		expect(workspaceRoot).toBeNull();
+	});
+
+	it("should pass LC_ALL=C and LANG=C to force English git output", () => {
+		mockExecFileSync.mockReturnValueOnce("/workspace/repo\n");
+
+		getGitWorkspaceRoot([{ uri: { fsPath: "/workspace/repo" } }] as never);
+
+		const options = mockExecFileSync.mock.calls[0][2] as {
+			env?: Record<string, string>;
+		};
+		expect(options.env).toBeDefined();
+		expect(options.env?.LC_ALL).toBe("C");
+		expect(options.env?.LANG).toBe("C");
 	});
 
 	it("should skip not-a-git-repository error and throw on subsequent ENOENT", () => {
