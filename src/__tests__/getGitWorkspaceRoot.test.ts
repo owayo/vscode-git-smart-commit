@@ -154,4 +154,19 @@ describe("getGitWorkspaceRoot", () => {
 			] as never),
 		).toThrow("spawn git ENOENT");
 	});
+
+	it("should skip empty-string result and return next valid Git root", () => {
+		// 最初のフォルダが空文字を返し、2番目のフォルダが有効なルートを返すケース
+		mockExecFileSync
+			.mockReturnValueOnce("  \n")
+			.mockReturnValueOnce("/workspace/repo\n");
+
+		const workspaceRoot = getGitWorkspaceRoot([
+			{ uri: { fsPath: "/workspace/empty" } },
+			{ uri: { fsPath: "/workspace/repo" } },
+		] as never);
+
+		expect(workspaceRoot).toBe("/workspace/repo");
+		expect(mockExecFileSync).toHaveBeenCalledTimes(2);
+	});
 });

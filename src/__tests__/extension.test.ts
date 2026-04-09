@@ -299,4 +299,25 @@ describe("extension", () => {
 		// ハンドラ内で runGitSc がエラーを返しても例外にならないこと
 		await expect(handler!()).resolves.toBeUndefined();
 	});
+
+	it("should create status bar item with Left alignment and priority 100", () => {
+		activate(mockContext);
+
+		expect(mockCreateStatusBarItem).toHaveBeenCalledWith(1, 100); // StatusBarAlignment.Left = 1
+	});
+
+	it("should not throw when all command handlers are invoked", async () => {
+		activate(mockContext);
+
+		const calls = mockRegisterCommand.mock.calls as unknown[][];
+		const handlers = new Map(
+			calls.map((call) => [call[0] as string, call[1] as () => Promise<void>]),
+		);
+
+		// 全5コマンドのハンドラがエラーなく呼び出せること
+		for (const [_name, handler] of handlers) {
+			await expect(handler()).resolves.toBeUndefined();
+		}
+		expect(handlers.size).toBe(5);
+	});
 });

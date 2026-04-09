@@ -126,6 +126,17 @@ src/
 - Added test for QuickPick `matchOnDescription` and `matchOnDetail` options in `rewordCommit`.
 - Added test for QuickPick item label format (git-commit icon prefix) and description format in `rewordCommit`.
 - Added test for `getGitWorkspaceRoot` error message truncation at 100 characters in `rewordCommit`.
+- Vitest updated to 4.1.4.
+- Added tests for `outputChannel.show(true)` call and header/status marker lines (`✅`/`❌`/`⚠️`) in both `runGitSc` and `rewordCommit`.
+- Added tests for `withProgress` options verification (location, title, cancellable) in `runGitSc`.
+- Added negative assertion tests for `git.refresh` not being called on failure in both `runGitSc` and `rewordCommit`.
+- Added tests for spawn error marker output to `outputChannel` in `runGitSc`.
+- Added tests for confirmation QuickPick items (`["Yes", "No"]`) and title (`"Confirm Reword"`) verification in `rewordCommit`.
+- Added tests for commit selection QuickPick `placeHolder` and `title` verification in `rewordCommit`.
+- Added test for chunked stderr accumulation in `rewordCommit` reword flow.
+- Added test for `createStatusBarItem` alignment (`Left`) and priority (`100`) in extension activation.
+- Added test for all 5 command handler invocations without error in extension activation.
+- Added test for multi-folder workspace where first folder returns empty string in `getGitWorkspaceRoot`.
 
 ## VS Code Extension Details
 

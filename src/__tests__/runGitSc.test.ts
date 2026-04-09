@@ -831,4 +831,176 @@ describe("runGitSc", () => {
 		);
 		expect(mockSpawn).not.toHaveBeenCalled();
 	});
+
+	it("should call outputChannel.show with preserveFocus=true before spawning", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => proc.__emit("close", 0), 10);
+		await promise;
+
+		expect(mockOutputChannel.show).toHaveBeenCalledWith(true);
+	});
+
+	it("should write header lines to outputChannel before spawning", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			stageAll: true,
+			autoConfirm: true,
+		});
+
+		setTimeout(() => proc.__emit("close", 0), 10);
+		await promise;
+
+		// ヘッダー区切り線、実行コマンド、作業ディレクトリの出力を検証
+		const calls = mockOutputChannel.appendLine.mock.calls.map(
+			(c: unknown[]) => c[0],
+		) as string[];
+		expect(calls.some((c) => c.includes("=".repeat(50)))).toBe(true);
+		expect(calls.some((c) => c.includes("Running: git-sc -a -y"))).toBe(true);
+		expect(
+			calls.some((c) => c.includes("Working directory: /test/workspace")),
+		).toBe(true);
+	});
+
+	it("should write success marker to outputChannel on exit code 0", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => proc.__emit("close", 0), 10);
+		await promise;
+
+		const calls = mockOutputChannel.appendLine.mock.calls.map(
+			(c: unknown[]) => c[0],
+		) as string[];
+		expect(
+			calls.some((c) => c.includes("✅ git-sc completed successfully")),
+		).toBe(true);
+	});
+
+	it("should write failure marker to outputChannel on non-zero exit", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => {
+			proc.stderr?.emit("data", Buffer.from("error"));
+			proc.__emit("close", 1);
+		}, 10);
+
+		await expect(promise).rejects.toThrow();
+
+		const calls = mockOutputChannel.appendLine.mock.calls.map(
+			(c: unknown[]) => c[0],
+		) as string[];
+		expect(calls.some((c) => c.includes("❌ git-sc failed with code 1"))).toBe(
+			true,
+		);
+	});
+
+	it("should write cancellation marker to outputChannel when cancelled", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		mockWithProgress.mockImplementationOnce(
+			async (
+				_options: unknown,
+				callback: (progress: unknown, token: unknown) => Promise<void>,
+			) => {
+				let cancelHandler: (() => void) | undefined;
+				const progress = { report: vi.fn() };
+				const token = {
+					onCancellationRequested: vi.fn((handler: () => void) => {
+						cancelHandler = handler;
+					}),
+					isCancellationRequested: false,
+				};
+
+				const progressPromise = callback(progress, token);
+				cancelHandler?.();
+				setTimeout(() => proc.__emit("close", null), 10);
+				return progressPromise;
+			},
+		);
+
+		await runGitSc(mockOutputChannel as never, { autoConfirm: true });
+
+		const calls = mockOutputChannel.appendLine.mock.calls.map(
+			(c: unknown[]) => c[0],
+		) as string[];
+		expect(calls.some((c) => c.includes("⚠️ git-sc cancelled by user"))).toBe(
+			true,
+		);
+	});
+
+	it("should call withProgress with correct options", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => proc.__emit("close", 0), 10);
+		await promise;
+
+		expect(mockWithProgress).toHaveBeenCalledWith(
+			{
+				location: 15, // ProgressLocation.Notification
+				title: "Git Smart Commit",
+				cancellable: true,
+			},
+			expect.any(Function),
+		);
+	});
+
+	it("should not call git.refresh on failure", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => {
+			proc.stderr?.emit("data", Buffer.from("error"));
+			proc.__emit("close", 1);
+		}, 10);
+
+		await expect(promise).rejects.toThrow();
+		expect(mockExecuteCommand).not.toHaveBeenCalledWith("git.refresh");
+	});
+
+	it("should write spawn error marker to outputChannel", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => proc.__emit("error", new Error("spawn EACCES")), 10);
+
+		await expect(promise).rejects.toThrow();
+
+		const calls = mockOutputChannel.appendLine.mock.calls.map(
+			(c: unknown[]) => c[0],
+		) as string[];
+		expect(
+			calls.some((c) => c.includes("❌ Failed to start git-sc: spawn EACCES")),
+		).toBe(true);
+	});
 });

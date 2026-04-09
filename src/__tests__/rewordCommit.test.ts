@@ -1267,4 +1267,191 @@ describe("rewordCommit", () => {
 			`Failed to detect Git repository: ${"z".repeat(100)}`,
 		);
 	});
+
+	it("should pass correct items and title to confirmation QuickPick", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockImplementationOnce(
+			(items: unknown[], options: { title?: string }) => {
+				// 確認ダイアログの選択肢が ["Yes", "No"] であること
+				expect(items).toEqual(["Yes", "No"]);
+				expect(options.title).toBe("Confirm Reword");
+				return Promise.resolve("No");
+			},
+		);
+
+		await rewordCommit(mockOutputChannel as never);
+
+		expect(mockShowQuickPick).toHaveBeenCalledTimes(2);
+	});
+
+	it("should pass correct placeHolder and title to commit selection QuickPick", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce(
+			(_items: unknown[], options: Record<string, unknown>) => {
+				expect(options.placeHolder).toBe("Select a commit to reword");
+				expect(options.title).toBe("Git Smart Commit: Reword");
+				return Promise.resolve(undefined);
+			},
+		);
+
+		await rewordCommit(mockOutputChannel as never);
+	});
+
+	it("should call outputChannel.show with preserveFocus=true before reword spawn", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(() => proc.__emit("close", 0), 10);
+		await promise;
+
+		expect(mockOutputChannel.show).toHaveBeenCalledWith(true);
+	});
+
+	it("should write success marker to outputChannel on reword completion", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(() => proc.__emit("close", 0), 10);
+		await promise;
+
+		const calls = mockOutputChannel.appendLine.mock.calls.map(
+			(c: unknown[]) => c[0],
+		) as string[];
+		expect(
+			calls.some((c) => c.includes("✅ Reword completed successfully")),
+		).toBe(true);
+	});
+
+	it("should write failure marker to outputChannel on reword failure", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(() => {
+			proc.stderr?.emit("data", Buffer.from("error"));
+			proc.__emit("close", 1);
+		}, 10);
+
+		await expect(promise).rejects.toThrow();
+
+		const calls = mockOutputChannel.appendLine.mock.calls.map(
+			(c: unknown[]) => c[0],
+		) as string[];
+		expect(calls.some((c) => c.includes("❌ Reword failed with code 1"))).toBe(
+			true,
+		);
+	});
+
+	it("should write cancellation marker to outputChannel when reword is cancelled", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+		mockWithProgress.mockImplementationOnce(
+			async (
+				_options: unknown,
+				callback: (progress: unknown, token: unknown) => Promise<void>,
+			) => {
+				let cancelHandler: (() => void) | undefined;
+				const progress = { report: vi.fn() };
+				const token = {
+					onCancellationRequested: vi.fn((handler: () => void) => {
+						cancelHandler = handler;
+					}),
+					isCancellationRequested: false,
+				};
+
+				const progressPromise = callback(progress, token);
+				cancelHandler?.();
+				setTimeout(() => proc.__emit("close", null), 10);
+				return progressPromise;
+			},
+		);
+
+		await rewordCommit(mockOutputChannel as never);
+
+		const calls = mockOutputChannel.appendLine.mock.calls.map(
+			(c: unknown[]) => c[0],
+		) as string[];
+		expect(calls.some((c) => c.includes("⚠️ Reword cancelled by user"))).toBe(
+			true,
+		);
+	});
+
+	it("should not call git.refresh on reword failure", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(() => {
+			proc.stderr?.emit("data", Buffer.from("error"));
+			proc.__emit("close", 1);
+		}, 10);
+
+		await expect(promise).rejects.toThrow();
+		expect(mockExecuteCommand).not.toHaveBeenCalledWith("git.refresh");
+	});
+
+	it("should accumulate chunked stderr in reword and use full message on failure", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(() => {
+			proc.stderr?.emit("data", Buffer.from("err1"));
+			proc.stderr?.emit("data", Buffer.from("err2"));
+			proc.__emit("close", 1);
+		}, 10);
+
+		await expect(promise).rejects.toThrow("err1err2");
+	});
 });
