@@ -6,12 +6,14 @@ function isNotGitRepositoryError(error: unknown): boolean {
 	return error instanceof Error && /not a git repository/i.test(error.message);
 }
 
-/** Git コマンドのメッセージを英語に固定するための環境変数 */
-const GIT_ENGLISH_ENV = {
-	...globalThis.process.env,
-	LC_ALL: "C",
-	LANG: "C",
-};
+/** Git メッセージを英語に固定しつつ、最新の環境変数を毎回取り込む */
+function getGitEnglishEnv() {
+	return {
+		...globalThis.process.env,
+		LC_ALL: "C",
+		LANG: "C",
+	};
+}
 
 export function getGitWorkspaceRoot(
 	workspaceFolders: readonly vscode.WorkspaceFolder[],
@@ -25,7 +27,7 @@ export function getGitWorkspaceRoot(
 					cwd: folder.uri.fsPath,
 					encoding: "utf-8",
 					stdio: ["ignore", "pipe", "pipe"],
-					env: GIT_ENGLISH_ENV,
+					env: getGitEnglishEnv(),
 				},
 			).trim();
 

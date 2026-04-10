@@ -138,6 +138,28 @@ describe("getGitWorkspaceRoot", () => {
 		expect(options.env?.LANG).toBe("C");
 	});
 
+	it("should include environment variables added after module import", () => {
+		const key = "GIT_SMART_COMMIT_TEST_DYNAMIC_ENV";
+		const original = globalThis.process.env[key];
+		mockExecFileSync.mockReturnValueOnce("/workspace/repo\n");
+		globalThis.process.env[key] = "updated-after-import";
+
+		try {
+			getGitWorkspaceRoot([{ uri: { fsPath: "/workspace/repo" } }] as never);
+		} finally {
+			if (original === undefined) {
+				delete globalThis.process.env[key];
+			} else {
+				globalThis.process.env[key] = original;
+			}
+		}
+
+		const options = mockExecFileSync.mock.calls[0][2] as {
+			env?: Record<string, string>;
+		};
+		expect(options.env?.[key]).toBe("updated-after-import");
+	});
+
 	it("should skip not-a-git-repository error and throw on subsequent ENOENT", () => {
 		mockExecFileSync
 			.mockImplementationOnce(() => {

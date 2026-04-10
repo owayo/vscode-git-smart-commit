@@ -127,6 +127,9 @@ src/
 - Added test for QuickPick item label format (git-commit icon prefix) and description format in `rewordCommit`.
 - Added test for `getGitWorkspaceRoot` error message truncation at 100 characters in `rewordCommit`.
 - Vitest updated to 4.1.4.
+- Biome updated to 2.4.11.
+- Fixed `getGitWorkspaceRoot` to build the Git locale environment per call so runtime `PATH` and other environment updates are not lost after module import.
+- Added regression test verifying `getGitWorkspaceRoot` passes environment variables added after module import.
 - Added tests for `outputChannel.show(true)` call and header/status marker lines (`✅`/`❌`/`⚠️`) in both `runGitSc` and `rewordCommit`.
 - Added tests for `withProgress` options verification (location, title, cancellable) in `runGitSc`.
 - Added negative assertion tests for `git.refresh` not being called on failure in both `runGitSc` and `rewordCommit`.
