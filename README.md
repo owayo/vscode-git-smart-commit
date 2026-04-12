@@ -166,6 +166,8 @@ pnpm run format
 pnpm run test
 ```
 
+ユニットテストには、`extension.ts` で登録される各コマンドハンドラのオプション引き渡しと、内部コマンド失敗時の例外抑止に関する回帰ケースも含まれます。
+
 ### デバッグ
 
 1. `F5` を押して Extension Development Host を起動

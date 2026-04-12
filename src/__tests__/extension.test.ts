@@ -20,6 +20,8 @@ const mockGetConfiguration = vi.fn(() => ({
 	get: vi.fn((_key: string, defaultValue: unknown) => defaultValue),
 }));
 const mockOnDidChangeConfiguration = vi.fn();
+const mockRunGitSc = vi.fn();
+const mockRewordCommit = vi.fn();
 
 vi.mock("vscode", () => ({
 	window: {
@@ -51,6 +53,14 @@ vi.mock("child_process", () => ({
 	execSync: vi.fn(),
 }));
 
+vi.mock("../commands/runGitSc", () => ({
+	runGitSc: (...args: unknown[]) => mockRunGitSc(...args),
+}));
+
+vi.mock("../commands/rewordCommit", () => ({
+	rewordCommit: (...args: unknown[]) => mockRewordCommit(...args),
+}));
+
 describe("extension", () => {
 	let activate: (context: vscodeTypes.ExtensionContext) => void;
 	let deactivate: () => void;
@@ -66,6 +76,8 @@ describe("extension", () => {
 	beforeEach(async () => {
 		vi.clearAllMocks();
 		(mockContext.subscriptions as unknown[]) = [];
+		mockRunGitSc.mockResolvedValue(undefined);
+		mockRewordCommit.mockResolvedValue(undefined);
 		const ext = await import("../extension");
 		activate = ext.activate;
 		deactivate = ext.deactivate;
@@ -283,10 +295,35 @@ describe("extension", () => {
 			true,
 		);
 		expect(registeredHandlers.has("git-smart-commit.reword")).toBe(true);
+
+		void registeredHandlers.get("git-smart-commit.runAddAutoConfirm")?.();
+		void registeredHandlers.get("git-smart-commit.runAddBodyAutoConfirm")?.();
+		void registeredHandlers.get("git-smart-commit.runAutoConfirm")?.();
+		void registeredHandlers.get("git-smart-commit.runBodyAutoConfirm")?.();
+		void registeredHandlers.get("git-smart-commit.reword")?.();
+
+		expect(mockRunGitSc).toHaveBeenNthCalledWith(1, expect.any(Object), {
+			stageAll: true,
+			autoConfirm: true,
+		});
+		expect(mockRunGitSc).toHaveBeenNthCalledWith(2, expect.any(Object), {
+			stageAll: true,
+			includeBody: true,
+			autoConfirm: true,
+		});
+		expect(mockRunGitSc).toHaveBeenNthCalledWith(3, expect.any(Object), {
+			autoConfirm: true,
+		});
+		expect(mockRunGitSc).toHaveBeenNthCalledWith(4, expect.any(Object), {
+			includeBody: true,
+			autoConfirm: true,
+		});
+		expect(mockRewordCommit).toHaveBeenCalledWith(expect.any(Object));
 	});
 
 	it("should not throw when command handler catches error", async () => {
 		activate(mockContext);
+		mockRunGitSc.mockRejectedValueOnce(new Error("runGitSc failed"));
 
 		// コマンドハンドラを取得して呼び出し — エラーが握りつぶされることを確認
 		const calls = mockRegisterCommand.mock.calls as unknown[][];
@@ -298,6 +335,23 @@ describe("extension", () => {
 		expect(handler).toBeDefined();
 		// ハンドラ内で runGitSc がエラーを返しても例外にならないこと
 		await expect(handler!()).resolves.toBeUndefined();
+		expect(mockRunGitSc).toHaveBeenCalledWith(expect.any(Object), {
+			stageAll: true,
+			autoConfirm: true,
+		});
+	});
+
+	it("should not throw when reword handler catches error", async () => {
+		activate(mockContext);
+		mockRewordCommit.mockRejectedValueOnce(new Error("reword failed"));
+
+		const calls = mockRegisterCommand.mock.calls as unknown[][];
+		const match = calls.find((call) => call[0] === "git-smart-commit.reword");
+		const handler = match?.[1] as (() => Promise<void>) | undefined;
+
+		expect(handler).toBeDefined();
+		await expect(handler!()).resolves.toBeUndefined();
+		expect(mockRewordCommit).toHaveBeenCalledWith(expect.any(Object));
 	});
 
 	it("should create status bar item with Left alignment and priority 100", () => {

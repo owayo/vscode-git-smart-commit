@@ -146,6 +146,7 @@ src/
 - Added test for working directory in header output of `runGitSc`.
 - Added tests for reword header lines output and `withProgress` options verification in `rewordCommit`.
 - Added test for spawn error marker output to `outputChannel` in `rewordCommit`.
+- Added extension command handler regression tests that verify each command dispatches the expected options and still swallows rejected `runGitSc` / `rewordCommit` calls.
 
 ## VS Code Extension Details
 
