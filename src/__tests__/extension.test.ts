@@ -320,4 +320,41 @@ describe("extension", () => {
 		}
 		expect(handlers.size).toBe(5);
 	});
+
+	it("should toggle status bar visibility on repeated config changes", () => {
+		// 設定変更コールバックで表示/非表示が正しく切り替わることを検証
+		const mockStatusBar = {
+			command: "",
+			text: "",
+			tooltip: "",
+			show: vi.fn(),
+			hide: vi.fn(),
+			dispose: vi.fn(),
+		};
+		mockCreateStatusBarItem.mockReturnValueOnce(mockStatusBar);
+
+		activate(mockContext);
+
+		const changeCallback = mockOnDidChangeConfiguration.mock.calls[0][0];
+
+		// 非表示に切り替え
+		mockGetConfiguration.mockReturnValueOnce({
+			get: vi.fn((_key: string) => false),
+		});
+		changeCallback({
+			affectsConfiguration: (key: string) =>
+				key === "gitSmartCommit.showStatusBarButton",
+		});
+		expect(mockStatusBar.hide).toHaveBeenCalled();
+
+		// 表示に戻す
+		mockGetConfiguration.mockReturnValueOnce({
+			get: vi.fn((_key: string, defaultValue: unknown) => defaultValue),
+		});
+		changeCallback({
+			affectsConfiguration: (key: string) =>
+				key === "gitSmartCommit.showStatusBarButton",
+		});
+		expect(mockStatusBar.show).toHaveBeenCalledTimes(2); // activate 時 + 2回目の変更
+	});
 });

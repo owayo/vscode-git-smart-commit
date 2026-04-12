@@ -1003,4 +1003,41 @@ describe("runGitSc", () => {
 			calls.some((c) => c.includes("❌ Failed to start git-sc: spawn EACCES")),
 		).toBe(true);
 	});
+
+	it("should treat null exit code as failure when not cancelled", async () => {
+		// プロセスがシグナルで終了し code が null になるケース（キャンセル以外）
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => proc.__emit("close", null), 10);
+
+		await expect(promise).rejects.toThrow("Process exited with code null");
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"Git Smart Commit failed: Process exited with code null",
+		);
+	});
+
+	it("should include working directory in header output", async () => {
+		mockGetGitWorkspaceRoot.mockReturnValue("/custom/path/repo");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => proc.__emit("close", 0), 10);
+		await promise;
+
+		const calls = mockOutputChannel.appendLine.mock.calls.map(
+			(c: unknown[]) => c[0],
+		) as string[];
+		expect(
+			calls.some((c) => c.includes("Working directory: /custom/path/repo")),
+		).toBe(true);
+	});
 });

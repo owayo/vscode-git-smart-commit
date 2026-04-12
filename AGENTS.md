@@ -140,6 +140,12 @@ src/
 - Added test for `createStatusBarItem` alignment (`Left`) and priority (`100`) in extension activation.
 - Added test for all 5 command handler invocations without error in extension activation.
 - Added test for multi-folder workspace where first folder returns empty string in `getGitWorkspaceRoot`.
+- @types/node updated to 25.6.0.
+- Added test for status bar visibility toggle on repeated config changes in extension activation.
+- Added test for null exit code (signal kill) without cancellation in both `runGitSc` and `rewordCommit`.
+- Added test for working directory in header output of `runGitSc`.
+- Added tests for reword header lines output and `withProgress` options verification in `rewordCommit`.
+- Added test for spawn error marker output to `outputChannel` in `rewordCommit`.
 
 ## VS Code Extension Details
 

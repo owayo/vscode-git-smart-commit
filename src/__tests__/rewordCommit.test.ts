@@ -1454,4 +1454,102 @@ describe("rewordCommit", () => {
 
 		await expect(promise).rejects.toThrow("err1err2");
 	});
+
+	it("should write header lines to outputChannel before reword spawn", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(() => proc.__emit("close", 0), 10);
+		await promise;
+
+		// ヘッダー区切り線、実行コマンド、作業ディレクトリの出力を検証
+		const calls = mockOutputChannel.appendLine.mock.calls.map(
+			(c: unknown[]) => c[0],
+		) as string[];
+		expect(calls.some((c) => c.includes("=".repeat(50)))).toBe(true);
+		expect(
+			calls.some((c) => c.includes("Running: git-sc --reword abc1234 -y")),
+		).toBe(true);
+		expect(
+			calls.some((c) => c.includes("Working directory: /test/workspace")),
+		).toBe(true);
+	});
+
+	it("should call withProgress with correct options for reword", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(() => proc.__emit("close", 0), 10);
+		await promise;
+
+		expect(mockWithProgress).toHaveBeenCalledWith(
+			{
+				location: 15, // ProgressLocation.Notification
+				title: "Git Smart Commit",
+				cancellable: true,
+			},
+			expect.any(Function),
+		);
+	});
+
+	it("should treat null exit code as failure when reword is not cancelled", async () => {
+		// プロセスがシグナルで終了し code が null になるケース（キャンセル以外）
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(() => proc.__emit("close", null), 10);
+
+		await expect(promise).rejects.toThrow("Process exited with code null");
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"Reword failed: Process exited with code null",
+		);
+	});
+
+	it("should write spawn error marker to outputChannel on reword spawn failure", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(() => proc.__emit("error", new Error("spawn EACCES")), 10);
+
+		await expect(promise).rejects.toThrow();
+
+		const calls = mockOutputChannel.appendLine.mock.calls.map(
+			(c: unknown[]) => c[0],
+		) as string[];
+		expect(
+			calls.some((c) => c.includes("❌ Failed to start git-sc: spawn EACCES")),
+		).toBe(true);
+	});
 });
