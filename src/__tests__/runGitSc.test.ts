@@ -1068,7 +1068,7 @@ describe("runGitSc", () => {
 		expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
 	});
 
-	it("should spawn git-sc.cmd on win32 platform", async () => {
+	it("should spawn git-sc with shell:true on win32 platform", async () => {
 		const originalPlatform = Object.getOwnPropertyDescriptor(
 			globalThis.process,
 			"platform",
@@ -1089,9 +1089,9 @@ describe("runGitSc", () => {
 			await promise;
 
 			expect(mockSpawn).toHaveBeenCalledWith(
-				"git-sc.cmd",
+				"git-sc",
 				["-y"],
-				expect.objectContaining({ shell: false }),
+				expect.objectContaining({ shell: true, windowsHide: true }),
 			);
 		} finally {
 			if (originalPlatform) {
@@ -1100,7 +1100,7 @@ describe("runGitSc", () => {
 		}
 	});
 
-	it("should spawn git-sc (no extension) on non-win32 platform", async () => {
+	it("should spawn git-sc with shell:false on non-win32 platform", async () => {
 		const originalPlatform = Object.getOwnPropertyDescriptor(
 			globalThis.process,
 			"platform",
@@ -1123,8 +1123,57 @@ describe("runGitSc", () => {
 			expect(mockSpawn).toHaveBeenCalledWith(
 				"git-sc",
 				["-y"],
-				expect.objectContaining({ shell: false }),
+				expect.objectContaining({ shell: false, windowsHide: true }),
 			);
+		} finally {
+			if (originalPlatform) {
+				Object.defineProperty(globalThis.process, "platform", originalPlatform);
+			}
+		}
+	});
+
+	it("should call taskkill /T /F on win32 cancellation", async () => {
+		const originalPlatform = Object.getOwnPropertyDescriptor(
+			globalThis.process,
+			"platform",
+		);
+		Object.defineProperty(globalThis.process, "platform", {
+			value: "win32",
+			configurable: true,
+		});
+
+		try {
+			const proc = createMockProcess();
+			Object.defineProperty(proc, "pid", { value: 4242, configurable: true });
+			mockSpawn.mockReturnValueOnce(proc); // git-sc 起動分
+			mockSpawn.mockReturnValueOnce(createMockProcess()); // taskkill 起動分
+
+			let cancelHandler: (() => void) | undefined;
+			const progress = { report: vi.fn() };
+			const token = {
+				onCancellationRequested: vi.fn((cb: () => void) => {
+					cancelHandler = cb;
+				}),
+			};
+			mockWithProgress.mockImplementationOnce((_options, callback) =>
+				callback(progress, token),
+			);
+
+			const progressPromise = runGitSc(mockOutputChannel as never, {
+				autoConfirm: true,
+			});
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			cancelHandler?.();
+			setTimeout(() => proc.__emit("close", null), 5);
+			await progressPromise;
+
+			expect(mockSpawn).toHaveBeenCalledWith(
+				"taskkill",
+				["/PID", "4242", "/T", "/F"],
+				expect.objectContaining({ stdio: "ignore", windowsHide: true }),
+			);
+			// Windows ルートでは process.kill は呼ばれない
+			expect(proc.kill).not.toHaveBeenCalled();
 		} finally {
 			if (originalPlatform) {
 				Object.defineProperty(globalThis.process, "platform", originalPlatform);

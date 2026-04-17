@@ -231,15 +231,16 @@ async function runGitScReword(
 
 				progress.report({ message: `Rewording commit ${hash}...` });
 
-				// shell: true だと中継シェルだけが kill 対象となり、
-				// 子プロセスの git-sc がキャンセル後も生き残るため shell: false を使う。
-				// Windows では .cmd ラッパー経由のため明示的に拡張子を付与する。
-				const command =
-					globalThis.process.platform === "win32" ? "git-sc.cmd" : "git-sc";
-				const process = spawn(command, ["--reword", hash, "-y"], {
+				// POSIX では shell: false で起動することで process.kill が
+				// 中継シェルではなく実際の git-sc プロセスへ届くようにする。
+				// Windows では Node.js の CVE-2024-27980 対策により .cmd を直接 spawn できないため、
+				// shell: true で起動した上でキャンセル時は taskkill /T /F でプロセスツリーごと終了させる。
+				const isWindows = globalThis.process.platform === "win32";
+				const process = spawn("git-sc", ["--reword", hash, "-y"], {
 					cwd: workspaceRoot,
-					shell: false,
+					shell: isWindows,
 					env: { ...globalThis.process.env, FORCE_COLOR: "0" },
+					windowsHide: true,
 				});
 
 				let stdout = "";
@@ -306,7 +307,15 @@ async function runGitScReword(
 
 				token.onCancellationRequested(() => {
 					isCancelled = true;
-					process.kill("SIGTERM");
+					if (isWindows && process.pid !== undefined) {
+						// shell: true で起動した cmd.exe 配下の git-sc までまとめて終了させる
+						spawn("taskkill", ["/PID", String(process.pid), "/T", "/F"], {
+							windowsHide: true,
+							stdio: "ignore",
+						});
+					} else {
+						process.kill("SIGTERM");
+					}
 					outputChannel.appendLine("\n⚠️ Reword cancelled by user");
 					resolveOnce();
 				});

@@ -57,7 +57,7 @@ src/
 ### Key Patterns
 
 - Commands are registered in `activate()` and added to `context.subscriptions`
-- External process execution uses `child_process.spawn` directly (`shell: false`) so cancellation reaches the real `git-sc` child instead of an intermediate shell. Windows resolves the binary as `git-sc.cmd`.
+- External process execution uses `child_process.spawn`. POSIX environments use `shell: false` so `process.kill("SIGTERM")` reaches the real `git-sc` child directly. Windows uses `shell: true` (required for `.cmd` after Node.js CVE-2024-27980 hardening) and cancels via `taskkill /PID <pid> /T /F` to terminate the whole process tree.
 - Commit history loading for reword uses `execFileSync("git", [...])` with explicit args
 - Commands resolve the first reachable Git repository root across open workspace folders before running `git-sc` or `git log`
 - Output is displayed via VS Code `OutputChannel`
@@ -147,6 +147,12 @@ src/
 - Added tests for reword header lines output and `withProgress` options verification in `rewordCommit`.
 - Added test for spawn error marker output to `outputChannel` in `rewordCommit`.
 - Added extension command handler regression tests that verify each command dispatches the expected options and still swallows rejected `runGitSc` / `rewordCommit` calls.
+- Biome updated to 2.4.12.
+- @vscode/vsce updated to 3.9.0.
+- ovsx updated to 0.10.11.
+- typescript updated to 6.0.3.
+- Fixed cancellation regression where `spawn("git-sc", ..., { shell: true })` followed by `process.kill()` only terminated the relay shell, leaving `git-sc` running after the user cancelled. Now POSIX uses `shell: false` + `process.kill("SIGTERM")` and Windows uses `shell: true` + `taskkill /PID <pid> /T /F` so the entire process tree exits. `windowsHide: true` is set to prevent flashing console windows on Windows.
+- Added regression tests for the platform-aware spawn options (`shell` flag), `taskkill` invocation on Windows cancellation, and `SIGTERM` delivery on POSIX cancellation in both commit and reword flows.
 
 ## VS Code Extension Details
 
