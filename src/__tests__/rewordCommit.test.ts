@@ -718,7 +718,7 @@ describe("rewordCommit", () => {
 			["--reword", "abc1234", "-y"],
 			expect.objectContaining({
 				cwd: "/test/workspace",
-				shell: true,
+				shell: false,
 			}),
 		);
 		expect(mockShowInformationMessage).toHaveBeenCalledWith(
@@ -748,7 +748,7 @@ describe("rewordCommit", () => {
 			["--reword", "abc1234", "-y"],
 			expect.objectContaining({
 				cwd: "/test/repo",
-				shell: true,
+				shell: false,
 			}),
 		);
 	});
@@ -1551,5 +1551,112 @@ describe("rewordCommit", () => {
 		expect(
 			calls.some((c) => c.includes("❌ Failed to start git-sc: spawn EACCES")),
 		).toBe(true);
+	});
+
+	it("should send SIGTERM (not default) on reword cancellation", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		let cancelHandler: (() => void) | undefined;
+		const progress = { report: vi.fn() };
+		const token = {
+			onCancellationRequested: vi.fn((cb: () => void) => {
+				cancelHandler = cb;
+			}),
+		};
+		mockWithProgress.mockImplementationOnce((_options, callback) =>
+			callback(progress, token),
+		);
+
+		const progressPromise = rewordCommit(mockOutputChannel as never);
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		cancelHandler?.();
+		setTimeout(() => proc.__emit("close", null), 5);
+		await progressPromise;
+
+		expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
+	});
+
+	it("should spawn git-sc.cmd on win32 platform for reword", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+
+		const originalPlatform = Object.getOwnPropertyDescriptor(
+			globalThis.process,
+			"platform",
+		);
+		Object.defineProperty(globalThis.process, "platform", {
+			value: "win32",
+			configurable: true,
+		});
+
+		try {
+			const proc = createMockProcess();
+			mockSpawn.mockReturnValue(proc);
+
+			const promise = rewordCommit(mockOutputChannel as never);
+			setTimeout(() => proc.__emit("close", 0), 10);
+			await promise;
+
+			expect(mockSpawn).toHaveBeenCalledWith(
+				"git-sc.cmd",
+				["--reword", "abc1234", "-y"],
+				expect.objectContaining({ shell: false }),
+			);
+		} finally {
+			if (originalPlatform) {
+				Object.defineProperty(globalThis.process, "platform", originalPlatform);
+			}
+		}
+	});
+
+	it("should spawn git-sc (no extension) on non-win32 platform for reword", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+
+		const originalPlatform = Object.getOwnPropertyDescriptor(
+			globalThis.process,
+			"platform",
+		);
+		Object.defineProperty(globalThis.process, "platform", {
+			value: "linux",
+			configurable: true,
+		});
+
+		try {
+			const proc = createMockProcess();
+			mockSpawn.mockReturnValue(proc);
+
+			const promise = rewordCommit(mockOutputChannel as never);
+			setTimeout(() => proc.__emit("close", 0), 10);
+			await promise;
+
+			expect(mockSpawn).toHaveBeenCalledWith(
+				"git-sc",
+				["--reword", "abc1234", "-y"],
+				expect.objectContaining({ shell: false }),
+			);
+		} finally {
+			if (originalPlatform) {
+				Object.defineProperty(globalThis.process, "platform", originalPlatform);
+			}
+		}
 	});
 });

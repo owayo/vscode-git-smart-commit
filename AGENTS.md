@@ -57,7 +57,7 @@ src/
 ### Key Patterns
 
 - Commands are registered in `activate()` and added to `context.subscriptions`
-- External process execution uses `child_process.spawn` with shell mode
+- External process execution uses `child_process.spawn` directly (`shell: false`) so cancellation reaches the real `git-sc` child instead of an intermediate shell. Windows resolves the binary as `git-sc.cmd`.
 - Commit history loading for reword uses `execFileSync("git", [...])` with explicit args
 - Commands resolve the first reachable Git repository root across open workspace folders before running `git-sc` or `git log`
 - Output is displayed via VS Code `OutputChannel`

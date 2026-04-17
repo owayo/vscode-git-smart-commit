@@ -165,7 +165,7 @@ describe("runGitSc", () => {
 			["-a", "-y"],
 			expect.objectContaining({
 				cwd: "/test/workspace",
-				shell: true,
+				shell: false,
 			}),
 		);
 	});
@@ -187,7 +187,7 @@ describe("runGitSc", () => {
 			["-y"],
 			expect.objectContaining({
 				cwd: "/test/repo",
-				shell: true,
+				shell: false,
 			}),
 		);
 	});
@@ -207,7 +207,7 @@ describe("runGitSc", () => {
 		expect(mockSpawn).toHaveBeenCalledWith(
 			"git-sc",
 			["-b", "-y"],
-			expect.objectContaining({ shell: true }),
+			expect.objectContaining({ shell: false }),
 		);
 	});
 
@@ -227,7 +227,7 @@ describe("runGitSc", () => {
 		expect(mockSpawn).toHaveBeenCalledWith(
 			"git-sc",
 			["-a", "-b", "-y"],
-			expect.objectContaining({ shell: true }),
+			expect.objectContaining({ shell: false }),
 		);
 	});
 
@@ -380,7 +380,7 @@ describe("runGitSc", () => {
 		expect(mockSpawn).toHaveBeenCalledWith(
 			"git-sc",
 			[],
-			expect.objectContaining({ shell: true }),
+			expect.objectContaining({ shell: false }),
 		);
 	});
 
@@ -406,7 +406,7 @@ describe("runGitSc", () => {
 		expect(mockSpawn).toHaveBeenCalledWith(
 			"git-sc",
 			["-b", "-y"],
-			expect.objectContaining({ shell: true }),
+			expect.objectContaining({ shell: false }),
 		);
 	});
 
@@ -430,7 +430,7 @@ describe("runGitSc", () => {
 		expect(mockSpawn).toHaveBeenCalledWith(
 			"git-sc",
 			[],
-			expect.objectContaining({ shell: true }),
+			expect.objectContaining({ shell: false }),
 		);
 	});
 
@@ -656,7 +656,7 @@ describe("runGitSc", () => {
 		expect(mockSpawn).toHaveBeenCalledWith(
 			"git-sc",
 			["-y"],
-			expect.objectContaining({ shell: true }),
+			expect.objectContaining({ shell: false }),
 		);
 	});
 
@@ -675,7 +675,7 @@ describe("runGitSc", () => {
 		expect(mockSpawn).toHaveBeenCalledWith(
 			"git-sc",
 			["-y"],
-			expect.objectContaining({ shell: true }),
+			expect.objectContaining({ shell: false }),
 		);
 	});
 
@@ -1039,5 +1039,96 @@ describe("runGitSc", () => {
 		expect(
 			calls.some((c) => c.includes("Working directory: /custom/path/repo")),
 		).toBe(true);
+	});
+
+	it("should send SIGTERM (not default) on cancellation to ensure child kill", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		let cancelHandler: (() => void) | undefined;
+		const progress = { report: vi.fn() };
+		const token = {
+			onCancellationRequested: vi.fn((cb: () => void) => {
+				cancelHandler = cb;
+			}),
+		};
+		mockWithProgress.mockImplementationOnce((_options, callback) =>
+			callback(progress, token),
+		);
+
+		const progressPromise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		cancelHandler?.();
+		setTimeout(() => proc.__emit("close", null), 5);
+		await progressPromise;
+
+		expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
+	});
+
+	it("should spawn git-sc.cmd on win32 platform", async () => {
+		const originalPlatform = Object.getOwnPropertyDescriptor(
+			globalThis.process,
+			"platform",
+		);
+		Object.defineProperty(globalThis.process, "platform", {
+			value: "win32",
+			configurable: true,
+		});
+
+		try {
+			const proc = createMockProcess();
+			mockSpawn.mockReturnValue(proc);
+
+			const promise = runGitSc(mockOutputChannel as never, {
+				autoConfirm: true,
+			});
+			setTimeout(() => proc.__emit("close", 0), 10);
+			await promise;
+
+			expect(mockSpawn).toHaveBeenCalledWith(
+				"git-sc.cmd",
+				["-y"],
+				expect.objectContaining({ shell: false }),
+			);
+		} finally {
+			if (originalPlatform) {
+				Object.defineProperty(globalThis.process, "platform", originalPlatform);
+			}
+		}
+	});
+
+	it("should spawn git-sc (no extension) on non-win32 platform", async () => {
+		const originalPlatform = Object.getOwnPropertyDescriptor(
+			globalThis.process,
+			"platform",
+		);
+		Object.defineProperty(globalThis.process, "platform", {
+			value: "darwin",
+			configurable: true,
+		});
+
+		try {
+			const proc = createMockProcess();
+			mockSpawn.mockReturnValue(proc);
+
+			const promise = runGitSc(mockOutputChannel as never, {
+				autoConfirm: true,
+			});
+			setTimeout(() => proc.__emit("close", 0), 10);
+			await promise;
+
+			expect(mockSpawn).toHaveBeenCalledWith(
+				"git-sc",
+				["-y"],
+				expect.objectContaining({ shell: false }),
+			);
+		} finally {
+			if (originalPlatform) {
+				Object.defineProperty(globalThis.process, "platform", originalPlatform);
+			}
+		}
 	});
 });

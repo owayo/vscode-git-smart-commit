@@ -231,9 +231,14 @@ async function runGitScReword(
 
 				progress.report({ message: `Rewording commit ${hash}...` });
 
-				const process = spawn("git-sc", ["--reword", hash, "-y"], {
+				// shell: true だと中継シェルだけが kill 対象となり、
+				// 子プロセスの git-sc がキャンセル後も生き残るため shell: false を使う。
+				// Windows では .cmd ラッパー経由のため明示的に拡張子を付与する。
+				const command =
+					globalThis.process.platform === "win32" ? "git-sc.cmd" : "git-sc";
+				const process = spawn(command, ["--reword", hash, "-y"], {
 					cwd: workspaceRoot,
-					shell: true,
+					shell: false,
 					env: { ...globalThis.process.env, FORCE_COLOR: "0" },
 				});
 
@@ -301,7 +306,7 @@ async function runGitScReword(
 
 				token.onCancellationRequested(() => {
 					isCancelled = true;
-					process.kill();
+					process.kill("SIGTERM");
 					outputChannel.appendLine("\n⚠️ Reword cancelled by user");
 					resolveOnce();
 				});

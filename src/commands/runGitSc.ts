@@ -109,9 +109,14 @@ export async function runGitSc(
 
 				progress.report({ message: "Generating commit message..." });
 
-				const process = spawn("git-sc", args, {
+				// shell: true だと中継シェルだけが kill 対象となり、
+				// 子プロセスの git-sc がキャンセル後も生き残るため shell: false を使う。
+				// Windows では .cmd ラッパー経由のため明示的に拡張子を付与する。
+				const command =
+					globalThis.process.platform === "win32" ? "git-sc.cmd" : "git-sc";
+				const process = spawn(command, args, {
 					cwd: workspaceRoot,
-					shell: true,
+					shell: false,
 					env: { ...globalThis.process.env, FORCE_COLOR: "0" },
 				});
 
@@ -181,7 +186,7 @@ export async function runGitSc(
 
 				token.onCancellationRequested(() => {
 					isCancelled = true;
-					process.kill();
+					process.kill("SIGTERM");
 					outputChannel.appendLine("\n⚠️ git-sc cancelled by user");
 					resolveOnce();
 				});
