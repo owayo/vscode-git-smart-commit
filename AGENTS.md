@@ -46,6 +46,7 @@ src/
     runGitSc.ts             # Core git-sc execution with spawn
     rewordCommit.ts         # Commit reword UI + git log parsing
     isCommandNotFoundError.ts # Cross-platform command-not-found detection
+    terminateProcessForCancellation.ts # Safe cancellation helper for POSIX and Windows
   __tests__/
     extension.test.ts       # Extension activation tests
     getGitWorkspaceRoot.test.ts # Git workspace root resolution tests
@@ -67,6 +68,10 @@ src/
 
 ## Recent Maintenance Notes
 
+- Windows cancellation now guards `taskkill` startup failures so a failed helper spawn is logged to the output channel instead of surfacing as an unhandled `error` event.
+- Added regression tests for `taskkill` spawn errors during Windows cancellation in both commit and reword flows.
+- @vscode/vsce updated to 3.9.1.
+- Vitest updated to 4.1.5.
 - Reword commit parsing now uses NUL-delimited `git log` output so subjects containing record separators (`\x1e`) are preserved correctly.
 - Reword commit parsing now handles subjects containing `|` safely.
 - Reword commit parsing now preserves subjects containing field separators (`\x1f`) without shifting `date`/`author`.

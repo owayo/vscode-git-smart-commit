@@ -2,6 +2,7 @@ import { spawn } from "child_process";
 import * as vscode from "vscode";
 import { getGitWorkspaceRoot } from "./getGitWorkspaceRoot";
 import { isCommandNotFoundError } from "./isCommandNotFoundError";
+import { terminateProcessForCancellation } from "./terminateProcessForCancellation";
 
 export interface GitScOptions {
 	stageAll?: boolean;
@@ -187,15 +188,7 @@ export async function runGitSc(
 
 				token.onCancellationRequested(() => {
 					isCancelled = true;
-					if (isWindows && process.pid !== undefined) {
-						// shell: true で起動した cmd.exe 配下の git-sc までまとめて終了させる
-						spawn("taskkill", ["/PID", String(process.pid), "/T", "/F"], {
-							windowsHide: true,
-							stdio: "ignore",
-						});
-					} else {
-						process.kill("SIGTERM");
-					}
+					terminateProcessForCancellation(process, outputChannel);
 					outputChannel.appendLine("\n⚠️ git-sc cancelled by user");
 					resolveOnce();
 				});

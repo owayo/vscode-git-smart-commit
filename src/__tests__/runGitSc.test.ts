@@ -1180,4 +1180,52 @@ describe("runGitSc", () => {
 			}
 		}
 	});
+
+	it("should log taskkill spawn errors on win32 cancellation", async () => {
+		const originalPlatform = Object.getOwnPropertyDescriptor(
+			globalThis.process,
+			"platform",
+		);
+		Object.defineProperty(globalThis.process, "platform", {
+			value: "win32",
+			configurable: true,
+		});
+
+		try {
+			const proc = createMockProcess();
+			const taskkillProc = createMockProcess();
+			Object.defineProperty(proc, "pid", { value: 4242, configurable: true });
+			mockSpawn.mockReturnValueOnce(proc);
+			mockSpawn.mockReturnValueOnce(taskkillProc);
+
+			let cancelHandler: (() => void) | undefined;
+			const progress = { report: vi.fn() };
+			const token = {
+				onCancellationRequested: vi.fn((cb: () => void) => {
+					cancelHandler = cb;
+				}),
+			};
+			mockWithProgress.mockImplementationOnce((_options, callback) =>
+				callback(progress, token),
+			);
+
+			const progressPromise = runGitSc(mockOutputChannel as never, {
+				autoConfirm: true,
+			});
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			cancelHandler?.();
+			taskkillProc.__emit("error", new Error("spawn taskkill ENOENT"));
+			setTimeout(() => proc.__emit("close", null), 5);
+			await progressPromise;
+
+			expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
+				"\n⚠️ Failed to start taskkill: spawn taskkill ENOENT",
+			);
+			expect(proc.kill).not.toHaveBeenCalled();
+		} finally {
+			if (originalPlatform) {
+				Object.defineProperty(globalThis.process, "platform", originalPlatform);
+			}
+		}
+	});
 });
