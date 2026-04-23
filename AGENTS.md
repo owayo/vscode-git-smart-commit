@@ -158,6 +158,8 @@ src/
 - typescript updated to 6.0.3.
 - Fixed cancellation regression where `spawn("git-sc", ..., { shell: true })` followed by `process.kill()` only terminated the relay shell, leaving `git-sc` running after the user cancelled. Now POSIX uses `shell: false` + `process.kill("SIGTERM")` and Windows uses `shell: true` + `taskkill /PID <pid> /T /F` so the entire process tree exits. `windowsHide: true` is set to prevent flashing console windows on Windows.
 - Added regression tests for the platform-aware spawn options (`shell` flag), `taskkill` invocation on Windows cancellation, and `SIGTERM` delivery on POSIX cancellation in both commit and reword flows.
+- Fixed duplicate UI notifications in `runGitSc` / `rewordCommit` when `spawn("git-sc")` fails on POSIX. Node.js fires both `error` (ENOENT) and `close` (code=null) events, so the `close`/`error` handlers now check the shared `settled` flag before writing to `outputChannel` or calling `showErrorMessage`. Previously users saw both the "git-sc command not found" install dialog and a subsequent "failed: Process exited with code ..." error for a single spawn failure.
+- Added regression tests that emit `error` followed by `close` to verify only one UI notification and no duplicate `failed with code` log line appears in both commit and reword flows.
 
 ## VS Code Extension Details
 

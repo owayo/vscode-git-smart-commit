@@ -832,6 +832,45 @@ describe("rewordCommit", () => {
 		);
 	});
 
+	it("should not show duplicate UI when close fires after reword spawn error (ENOENT)", async () => {
+		// POSIX で spawn("git-sc", ...) が ENOENT になった場合、
+		// Node.js は error → close (code=null) の順でイベントを発火する。
+		// 現在の実装は settled フラグで保護しているため、
+		// UI 通知と outputChannel 出力の二重化が起きないことを確認する。
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		mockShowErrorMessage.mockResolvedValue(undefined);
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(() => {
+			proc.__emit("error", new Error("spawn git-sc ENOENT"));
+			proc.__emit("close", null);
+		}, 10);
+
+		await expect(promise).rejects.toThrow("ENOENT");
+
+		// インストール案内ダイアログは 1 回だけ
+		expect(mockShowErrorMessage).toHaveBeenCalledTimes(1);
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"git-sc command not found. Please install it and ensure it's in your PATH.",
+			"View Installation",
+		);
+		// outputChannel には close 経由の "❌ Reword failed with code ..." が出力されない
+		const appendLineCalls = (
+			mockOutputChannel.appendLine as ReturnType<typeof vi.fn>
+		).mock.calls.map((c) => c[0] as string);
+		expect(
+			appendLineCalls.some((line) => line.includes("Reword failed with code")),
+		).toBe(false);
+	});
+
 	it("should handle reword non-zero exit code", async () => {
 		mockExecFileSync.mockReturnValue(
 			"abc1234\x00feat: test\x001h ago\x00Author\x00",
