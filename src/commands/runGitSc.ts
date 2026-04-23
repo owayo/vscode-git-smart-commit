@@ -138,6 +138,12 @@ export async function runGitSc(
 				});
 
 				process.on("close", (code: number | null) => {
+					// 既に error / cancel 等で確定済みの場合は何もしない
+					// （POSIX では spawn 失敗時に error → close が連続発火するため、
+					// UI 通知や outputChannel 出力の二重化を防ぐ）
+					if (settled) {
+						return;
+					}
 					if (isCancelled) {
 						resolveOnce();
 						return;
@@ -167,6 +173,10 @@ export async function runGitSc(
 				});
 
 				process.on("error", (err: Error) => {
+					// 既に close / cancel 等で確定済みの場合は何もしない
+					if (settled) {
+						return;
+					}
 					if (isCancelled) {
 						resolveOnce();
 						return;
