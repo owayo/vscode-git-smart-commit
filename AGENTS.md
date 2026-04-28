@@ -53,6 +53,7 @@ src/
     isCommandNotFoundError.test.ts # Command-not-found判定のテスト
     rewordCommit.test.ts    # getRecentCommits & rewordCommit tests
     runGitSc.test.ts        # runGitSc command tests
+    terminateProcessForCancellation.test.ts # Cancellation helper tests
 ```
 
 ### Key Patterns
@@ -68,6 +69,8 @@ src/
 
 ## Recent Maintenance Notes
 
+- Biome updated to 2.4.13.
+- Added direct unit tests for `terminateProcessForCancellation`, covering POSIX `SIGTERM`, Windows `taskkill`, and both synchronous/asynchronous `taskkill` startup failures.
 - Windows cancellation now guards `taskkill` startup failures so a failed helper spawn is logged to the output channel instead of surfacing as an unhandled `error` event.
 - Added regression tests for `taskkill` spawn errors during Windows cancellation in both commit and reword flows.
 - @vscode/vsce updated to 3.9.1.

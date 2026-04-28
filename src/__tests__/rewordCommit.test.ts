@@ -305,7 +305,7 @@ describe("getRecentCommits", () => {
 
 	it("should trim newline from hash when format: inserts separator between commits", () => {
 		// format: はコミット間に改行セパレータを挿入するため、
-		// 2番目以降のハッシュ先頭に改行が混入する → trim で除去する回帰テスト
+		// 2番目以降のハッシュ先頭に混入する改行だけを除去する回帰テスト
 		mockExecFileSync.mockReturnValue(
 			"abc1234\x00first\x001h ago\x00Alice\x00\ndef5678\x00second\x002h ago\x00Bob\x00",
 		);
