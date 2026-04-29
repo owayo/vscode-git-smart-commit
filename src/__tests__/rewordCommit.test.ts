@@ -29,6 +29,16 @@ vi.mock("../commands/getGitWorkspaceRoot", () => ({
 	getGitWorkspaceRoot: (...args: unknown[]) => mockGetGitWorkspaceRoot(...args),
 }));
 
+// Windows シミュレートテストでは PATH 走査の副作用を避けたいので、
+// `resolveSpawnCommand` の挙動を旧実装相当 (POSIX→shell:false / win32→shell:true) に固定する。
+// 絶対パス解決ロジック自体は `resolveExecutablePath.test.ts` で別途検証する。
+vi.mock("../commands/resolveExecutablePath", () => ({
+	resolveSpawnCommand: (name: string) => ({
+		command: name,
+		useShell: globalThis.process.platform === "win32",
+	}),
+}));
+
 vi.mock("vscode", () => ({
 	window: {
 		showErrorMessage: (...args: unknown[]) => mockShowErrorMessage(...args),
@@ -142,14 +152,21 @@ describe("getRecentCommits", () => {
 		expect(mockExecFileSync).toHaveBeenNthCalledWith(
 			1,
 			"git",
-			["log", "--format=format:%h%x00%s%x00%cr%x00%an%x00", "-n", "10"],
-			{ cwd: "/workspace", encoding: "utf-8" },
+			[
+				"-C",
+				"/workspace",
+				"log",
+				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
+				"-n",
+				"10",
+			],
+			{ encoding: "utf-8" },
 		);
 		expect(mockExecFileSync).toHaveBeenNthCalledWith(
 			2,
 			"git",
-			["rev-list", "--count", "--all"],
-			{ cwd: "/workspace", encoding: "utf-8" },
+			["-C", "/workspace", "rev-list", "--count", "--all"],
+			{ encoding: "utf-8" },
 		);
 	});
 
@@ -168,14 +185,21 @@ describe("getRecentCommits", () => {
 		expect(mockExecFileSync).toHaveBeenNthCalledWith(
 			1,
 			"git",
-			["log", "--format=format:%h%x00%s%x00%cr%x00%an%x00", "-n", "10"],
-			{ cwd: "/workspace", encoding: "utf-8" },
+			[
+				"-C",
+				"/workspace",
+				"log",
+				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
+				"-n",
+				"10",
+			],
+			{ encoding: "utf-8" },
 		);
 		expect(mockExecFileSync).toHaveBeenNthCalledWith(
 			2,
 			"git",
-			["rev-list", "--count", "--all"],
-			{ cwd: "/workspace", encoding: "utf-8" },
+			["-C", "/workspace", "rev-list", "--count", "--all"],
+			{ encoding: "utf-8" },
 		);
 	});
 
@@ -193,8 +217,15 @@ describe("getRecentCommits", () => {
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
 			"git",
-			["log", "--format=format:%h%x00%s%x00%cr%x00%an%x00", "-n", "5"],
-			{ cwd: "/workspace", encoding: "utf-8" },
+			[
+				"-C",
+				"/workspace",
+				"log",
+				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
+				"-n",
+				"5",
+			],
+			{ encoding: "utf-8" },
 		);
 	});
 
@@ -205,8 +236,15 @@ describe("getRecentCommits", () => {
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
 			"git",
-			["log", "--format=format:%h%x00%s%x00%cr%x00%an%x00", "-n", "10"],
-			{ cwd: "/workspace", encoding: "utf-8" },
+			[
+				"-C",
+				"/workspace",
+				"log",
+				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
+				"-n",
+				"10",
+			],
+			{ encoding: "utf-8" },
 		);
 	});
 
@@ -217,8 +255,15 @@ describe("getRecentCommits", () => {
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
 			"git",
-			["log", "--format=format:%h%x00%s%x00%cr%x00%an%x00", "-n", "10"],
-			{ cwd: "/workspace", encoding: "utf-8" },
+			[
+				"-C",
+				"/workspace",
+				"log",
+				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
+				"-n",
+				"10",
+			],
+			{ encoding: "utf-8" },
 		);
 	});
 
@@ -274,8 +319,15 @@ describe("getRecentCommits", () => {
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
 			"git",
-			["log", "--format=format:%h%x00%s%x00%cr%x00%an%x00", "-n", "10"],
-			{ cwd: "/workspace", encoding: "utf-8" },
+			[
+				"-C",
+				"/workspace",
+				"log",
+				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
+				"-n",
+				"10",
+			],
+			{ encoding: "utf-8" },
 		);
 	});
 
@@ -286,8 +338,15 @@ describe("getRecentCommits", () => {
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
 			"git",
-			["log", "--format=format:%h%x00%s%x00%cr%x00%an%x00", "-n", "10"],
-			{ cwd: "/workspace", encoding: "utf-8" },
+			[
+				"-C",
+				"/workspace",
+				"log",
+				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
+				"-n",
+				"10",
+			],
+			{ encoding: "utf-8" },
 		);
 	});
 
@@ -298,8 +357,15 @@ describe("getRecentCommits", () => {
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
 			"git",
-			["log", "--format=format:%h%x00%s%x00%cr%x00%an%x00", "-n", "10"],
-			{ cwd: "/workspace", encoding: "utf-8" },
+			[
+				"-C",
+				"/workspace",
+				"log",
+				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
+				"-n",
+				"10",
+			],
+			{ encoding: "utf-8" },
 		);
 	});
 
@@ -324,8 +390,15 @@ describe("getRecentCommits", () => {
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
 			"git",
-			["log", "--format=format:%h%x00%s%x00%cr%x00%an%x00", "-n", "5"],
-			{ cwd: "/workspace", encoding: "utf-8" },
+			[
+				"-C",
+				"/workspace",
+				"log",
+				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
+				"-n",
+				"5",
+			],
+			{ encoding: "utf-8" },
 		);
 	});
 
@@ -410,8 +483,15 @@ describe("getRecentCommits", () => {
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
 			"git",
-			["log", "--format=format:%h%x00%s%x00%cr%x00%an%x00", "-n", "10"],
-			{ cwd: "/workspace", encoding: "utf-8" },
+			[
+				"-C",
+				"/workspace",
+				"log",
+				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
+				"-n",
+				"10",
+			],
+			{ encoding: "utf-8" },
 		);
 	});
 
@@ -796,7 +876,11 @@ describe("rewordCommit", () => {
 		mockSpawn.mockReturnValue(proc);
 
 		const promise = rewordCommit(mockOutputChannel as never);
-		setTimeout(() => proc.__emit("close", 127), 10);
+		// shell 経由で起動し、未検出メッセージが stderr に届いた状態を再現
+		setTimeout(() => {
+			proc.stderr?.emit("data", Buffer.from("zsh: command not found: git-sc"));
+			proc.__emit("close", 127);
+		}, 10);
 
 		await expect(promise).rejects.toThrow();
 		expect(mockParseUri).toHaveBeenCalledWith(
@@ -1054,10 +1138,17 @@ describe("rewordCommit", () => {
 
 		await rewordCommit(mockOutputChannel as never);
 
-		// git log コマンドの -n 引数が 15 であることを検証
+		// git log コマンドの -n 引数が 15 であり、`-C` 引数で作業ディレクトリが指定されていることを検証
 		expect(mockExecFileSync).toHaveBeenCalledWith(
 			"git",
-			["log", "--format=format:%h%x00%s%x00%cr%x00%an%x00", "-n", "15"],
+			[
+				"-C",
+				"/test/workspace",
+				"log",
+				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
+				"-n",
+				"15",
+			],
 			expect.objectContaining({ encoding: "utf-8" }),
 		);
 	});
@@ -1169,7 +1260,10 @@ describe("rewordCommit", () => {
 		mockSpawn.mockReturnValue(proc);
 
 		const promise = rewordCommit(mockOutputChannel as never);
-		setTimeout(() => proc.__emit("close", 127), 10);
+		setTimeout(() => {
+			proc.stderr?.emit("data", Buffer.from("zsh: command not found: git-sc"));
+			proc.__emit("close", 127);
+		}, 10);
 
 		await expect(promise).rejects.toThrow();
 		expect(mockShowErrorMessage).toHaveBeenCalledWith(

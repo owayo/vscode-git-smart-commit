@@ -20,11 +20,14 @@ export function getGitWorkspaceRoot(
 ): string | null {
 	for (const folder of workspaceFolders) {
 		try {
+			// `-C <dir>` で作業ディレクトリを git に直接指定する。
+			// `cwd` で渡すと Windows の `CreateProcess` がカレントディレクトリを
+			// 実行ファイル探索パスに含め、悪意ある repo 直下の `git.exe` を
+			// 優先実行してしまう (cwd ハイジャック) リスクがあるため避ける。
 			const workspaceRoot = execFileSync(
 				"git",
-				["rev-parse", "--show-toplevel"],
+				["-C", folder.uri.fsPath, "rev-parse", "--show-toplevel"],
 				{
-					cwd: folder.uri.fsPath,
 					encoding: "utf-8",
 					stdio: ["ignore", "pipe", "pipe"],
 					env: getGitEnglishEnv(),

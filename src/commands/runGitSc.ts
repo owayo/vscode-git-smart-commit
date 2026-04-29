@@ -2,6 +2,7 @@ import { spawn } from "child_process";
 import * as vscode from "vscode";
 import { getGitWorkspaceRoot } from "./getGitWorkspaceRoot";
 import { isCommandNotFoundError } from "./isCommandNotFoundError";
+import { resolveSpawnCommand } from "./resolveExecutablePath";
 import { terminateProcessForCancellation } from "./terminateProcessForCancellation";
 
 export interface GitScOptions {
@@ -112,12 +113,15 @@ export async function runGitSc(
 
 				// POSIX では shell: false で起動することで process.kill が
 				// 中継シェルではなく実際の git-sc プロセスへ届くようにする。
-				// Windows では Node.js の CVE-2024-27980 対策により .cmd を直接 spawn できないため、
-				// shell: true で起動した上でキャンセル時は taskkill /T /F でプロセスツリーごと終了させる。
-				const isWindows = globalThis.process.platform === "win32";
-				const process = spawn("git-sc", args, {
+				// Windows では PATH を走査して絶対パスで起動することで cwd ハイジャック
+				// (悪意ある repo 直下の git-sc.cmd を優先実行する攻撃) を防ぎ、
+				// .cmd/.bat の場合のみ Node.js の CVE-2024-27980 対策で shell: true を使う。
+				// shell: true 利用時はキャンセルで taskkill /T /F により
+				// 中継シェルもろともプロセスツリーを終了させる。
+				const { command, useShell } = resolveSpawnCommand("git-sc");
+				const process = spawn(command, args, {
 					cwd: workspaceRoot,
-					shell: isWindows,
+					shell: useShell,
 					env: { ...globalThis.process.env, FORCE_COLOR: "0" },
 					windowsHide: true,
 				});
@@ -153,8 +157,14 @@ export async function runGitSc(
 						outputChannel.appendLine(`\n✅ git-sc completed successfully`);
 						vscode.window.showInformationMessage("Git Smart Commit completed!");
 
-						// Git 拡張の状態表示を更新
-						vscode.commands.executeCommand("git.refresh");
+						// Git 拡張の状態表示を更新（拡張未登録/無効時の reject を捕捉）
+						Promise.resolve(
+							vscode.commands.executeCommand("git.refresh"),
+						).catch((error: unknown) => {
+							const message =
+								error instanceof Error ? error.message : String(error);
+							outputChannel.appendLine(`⚠️ Git refresh failed: ${message}`);
+						});
 						resolveOnce();
 					} else {
 						const errorMessage =

@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { isCommandNotFoundError } from "../commands/isCommandNotFoundError";
 
 describe("isCommandNotFoundError", () => {
-	it("returns true for POSIX command-not-found exit code", () => {
-		expect(isCommandNotFoundError(127, "any error")).toBe(true);
+	it("returns false for POSIX exit code 127 without matching message", () => {
+		// 本拡張は POSIX で `shell: false` で git-sc を spawn するため、
+		// `close` で来る 127 は git-sc 自身の終了コードとして扱う（未検出ではない）
+		expect(isCommandNotFoundError(127, "any error")).toBe(false);
 	});
 
 	it("returns true for Windows command-not-found exit code", () => {
@@ -95,16 +97,17 @@ describe("isCommandNotFoundError", () => {
 		expect(isCommandNotFoundError(1, "")).toBe(false);
 	});
 
-	it("returns true when both exit code and message match", () => {
-		// 終了コード 127 とメッセージの両方が一致するケース
+	it("returns true for exit code 127 with matching message", () => {
+		// POSIX の 127 はそれ自体では未検出と判定しないが、
+		// メッセージ側のパターン一致があれば未検出として扱える
 		expect(isCommandNotFoundError(127, "bash: git-sc: command not found")).toBe(
 			true,
 		);
 	});
 
-	it("returns true for exit code 127 with empty error message", () => {
-		// 終了コードのみで判定できるケース
-		expect(isCommandNotFoundError(127, "")).toBe(true);
+	it("returns false for exit code 127 with empty error message", () => {
+		// POSIX の 127 単体ではメッセージ判定を要求するため、未検出と扱わない
+		expect(isCommandNotFoundError(127, "")).toBe(false);
 	});
 
 	it("returns true for exit code 9009 with empty error message", () => {

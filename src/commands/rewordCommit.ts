@@ -2,6 +2,7 @@ import { execFileSync, spawn } from "child_process";
 import * as vscode from "vscode";
 import { getGitWorkspaceRoot } from "./getGitWorkspaceRoot";
 import { isCommandNotFoundError } from "./isCommandNotFoundError";
+import { resolveSpawnCommand } from "./resolveExecutablePath";
 import { terminateProcessForCancellation } from "./terminateProcessForCancellation";
 
 export interface CommitInfo {
@@ -31,10 +32,15 @@ function showGitScNotFoundMessage(): void {
 
 function getCommitCount(workspaceRoot: string): number | null {
 	try {
-		const output = execFileSync("git", ["rev-list", "--count", "--all"], {
-			cwd: workspaceRoot,
-			encoding: "utf-8",
-		}).trim();
+		// `-C <dir>` で作業ディレクトリを git に渡すことで、
+		// Windows での cwd ハイジャック (悪意ある repo 直下の git.exe 優先実行) を防ぐ
+		const output = execFileSync(
+			"git",
+			["-C", workspaceRoot, "rev-list", "--count", "--all"],
+			{
+				encoding: "utf-8",
+			},
+		).trim();
 		const count = Number.parseInt(output, 10);
 		return Number.isNaN(count) ? null : count;
 	} catch {
@@ -49,16 +55,19 @@ export function getRecentCommits(
 	const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 10;
 	let output: string;
 	try {
+		// `-C <dir>` で作業ディレクトリを git に渡すことで、
+		// Windows での cwd ハイジャックを防ぐ
 		output = execFileSync(
 			"git",
 			[
+				"-C",
+				workspaceRoot,
 				"log",
 				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
 				"-n",
 				String(safeLimit),
 			],
 			{
-				cwd: workspaceRoot,
 				encoding: "utf-8",
 			},
 		);
@@ -234,12 +243,15 @@ async function runGitScReword(
 
 				// POSIX では shell: false で起動することで process.kill が
 				// 中継シェルではなく実際の git-sc プロセスへ届くようにする。
-				// Windows では Node.js の CVE-2024-27980 対策により .cmd を直接 spawn できないため、
-				// shell: true で起動した上でキャンセル時は taskkill /T /F でプロセスツリーごと終了させる。
-				const isWindows = globalThis.process.platform === "win32";
-				const process = spawn("git-sc", ["--reword", hash, "-y"], {
+				// Windows では PATH を走査して絶対パスで起動することで cwd ハイジャック
+				// (悪意ある repo 直下の git-sc.cmd を優先実行する攻撃) を防ぎ、
+				// .cmd/.bat の場合のみ Node.js の CVE-2024-27980 対策で shell: true を使う。
+				// shell: true 利用時はキャンセルで taskkill /T /F により
+				// 中継シェルもろともプロセスツリーを終了させる。
+				const { command, useShell } = resolveSpawnCommand("git-sc");
+				const process = spawn(command, ["--reword", hash, "-y"], {
 					cwd: workspaceRoot,
-					shell: isWindows,
+					shell: useShell,
 					env: { ...globalThis.process.env, FORCE_COLOR: "0" },
 					windowsHide: true,
 				});
@@ -276,7 +288,14 @@ async function runGitScReword(
 						vscode.window.showInformationMessage(
 							"Commit reworded successfully!",
 						);
-						vscode.commands.executeCommand("git.refresh");
+						// Git 拡張の状態表示を更新（拡張未登録/無効時の reject を捕捉）
+						Promise.resolve(
+							vscode.commands.executeCommand("git.refresh"),
+						).catch((error: unknown) => {
+							const message =
+								error instanceof Error ? error.message : String(error);
+							outputChannel.appendLine(`⚠️ Git refresh failed: ${message}`);
+						});
 						resolveOnce();
 					} else {
 						const errorMessage =

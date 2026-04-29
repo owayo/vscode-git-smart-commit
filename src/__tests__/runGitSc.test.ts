@@ -15,6 +15,16 @@ vi.mock("../commands/getGitWorkspaceRoot", () => ({
 	getGitWorkspaceRoot: (...args: unknown[]) => mockGetGitWorkspaceRoot(...args),
 }));
 
+// Windows シミュレートテストでは PATH 走査の副作用を避けたいので、
+// `resolveSpawnCommand` の挙動を旧実装相当 (POSIX→shell:false / win32→shell:true) に固定する。
+// 絶対パス解決ロジック自体は `resolveExecutablePath.test.ts` で別途検証する。
+vi.mock("../commands/resolveExecutablePath", () => ({
+	resolveSpawnCommand: (name: string) => ({
+		command: name,
+		useShell: globalThis.process.platform === "win32",
+	}),
+}));
+
 const mockShowErrorMessage = vi.fn();
 const mockShowInformationMessage = vi.fn();
 const mockWithProgress = vi.fn();
@@ -265,7 +275,10 @@ describe("runGitSc", () => {
 		expect(mockShowErrorMessage).toHaveBeenCalled();
 	});
 
-	it("should show installation link on exit code 127 (command not found)", async () => {
+	it("should show installation link on exit code 127 with command-not-found stderr", async () => {
+		// 本拡張は POSIX で `shell: false` 起動するため、
+		// 起動済み git-sc が exit 127 を返した場合は単独で「未検出」と判定しない。
+		// shell 経由起動時など stderr に未検出メッセージが乗っているケースのみ案内を出す。
 		const proc = createMockProcess();
 		mockSpawn.mockReturnValue(proc);
 		mockShowErrorMessage.mockResolvedValue("View Installation");
@@ -274,7 +287,10 @@ describe("runGitSc", () => {
 			autoConfirm: true,
 		});
 
-		setTimeout(() => proc.__emit("close", 127), 10);
+		setTimeout(() => {
+			proc.stderr?.emit("data", Buffer.from("zsh: command not found: git-sc"));
+			proc.__emit("close", 127);
+		}, 10);
 
 		await expect(promise).rejects.toThrow();
 		expect(mockShowErrorMessage).toHaveBeenCalledWith(
@@ -292,7 +308,10 @@ describe("runGitSc", () => {
 			autoConfirm: true,
 		});
 
-		setTimeout(() => proc.__emit("close", 127), 10);
+		setTimeout(() => {
+			proc.stderr?.emit("data", Buffer.from("zsh: command not found: git-sc"));
+			proc.__emit("close", 127);
+		}, 10);
 
 		await expect(promise).rejects.toThrow();
 		expect(mockParseUri).toHaveBeenCalledWith(
@@ -774,7 +793,10 @@ describe("runGitSc", () => {
 			autoConfirm: true,
 		});
 
-		setTimeout(() => proc.__emit("close", 127), 10);
+		setTimeout(() => {
+			proc.stderr?.emit("data", Buffer.from("zsh: command not found: git-sc"));
+			proc.__emit("close", 127);
+		}, 10);
 
 		await expect(promise).rejects.toThrow();
 		expect(mockShowErrorMessage).toHaveBeenCalledWith(

@@ -26,12 +26,12 @@ describe("getGitWorkspaceRoot", () => {
 		] as never);
 
 		expect(workspaceRoot).toBe("/workspace/repo");
+		// `-C <dir>` で作業ディレクトリを引数に渡す（cwd ハイジャック対策）
 		expect(mockExecFileSync).toHaveBeenNthCalledWith(
 			1,
 			"git",
-			["rev-parse", "--show-toplevel"],
+			["-C", "/workspace/plain", "rev-parse", "--show-toplevel"],
 			expect.objectContaining({
-				cwd: "/workspace/plain",
 				encoding: "utf-8",
 				stdio: ["ignore", "pipe", "pipe"],
 				env: expect.objectContaining({ LC_ALL: "C", LANG: "C" }),
@@ -40,9 +40,8 @@ describe("getGitWorkspaceRoot", () => {
 		expect(mockExecFileSync).toHaveBeenNthCalledWith(
 			2,
 			"git",
-			["rev-parse", "--show-toplevel"],
+			["-C", "/workspace/repo/packages/app", "rev-parse", "--show-toplevel"],
 			expect.objectContaining({
-				cwd: "/workspace/repo/packages/app",
 				encoding: "utf-8",
 				stdio: ["ignore", "pipe", "pipe"],
 				env: expect.objectContaining({ LC_ALL: "C", LANG: "C" }),
