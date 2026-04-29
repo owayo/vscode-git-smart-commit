@@ -118,7 +118,19 @@ export async function runGitSc(
 				// .cmd/.bat の場合のみ Node.js の CVE-2024-27980 対策で shell: true を使う。
 				// shell: true 利用時はキャンセルで taskkill /T /F により
 				// 中継シェルもろともプロセスツリーを終了させる。
-				const { command, useShell } = resolveSpawnCommand("git-sc");
+				const resolved = resolveSpawnCommand("git-sc");
+				if (!resolved) {
+					// Windows で PATH に安全な絶対パスが見つからない場合は spawn せず、
+					// インストール案内へフォールバックする（フォールバック起動は
+					// cwd ハイジャックが残るため避ける）
+					outputChannel.appendLine(
+						"\n❌ git-sc not found in PATH. Aborting before unsafe spawn.",
+					);
+					showGitScNotFoundMessage();
+					rejectOnce(new Error("git-sc command not found in PATH"));
+					return;
+				}
+				const { command, useShell } = resolved;
 				const process = spawn(command, args, {
 					cwd: workspaceRoot,
 					shell: useShell,

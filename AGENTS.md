@@ -47,6 +47,7 @@ src/
     rewordCommit.ts         # Commit reword UI + git log parsing
     isCommandNotFoundError.ts # Cross-platform command-not-found detection
     terminateProcessForCancellation.ts # Safe cancellation helper for POSIX and Windows
+    resolveExecutablePath.ts # Windows PATH 走査による実行ファイル絶対パス解決 (cwd ハイジャック対策)
   __tests__/
     extension.test.ts       # Extension activation tests
     getGitWorkspaceRoot.test.ts # Git workspace root resolution tests
@@ -54,18 +55,20 @@ src/
     rewordCommit.test.ts    # getRecentCommits & rewordCommit tests
     runGitSc.test.ts        # runGitSc command tests
     terminateProcessForCancellation.test.ts # Cancellation helper tests
+    resolveExecutablePath.test.ts # Windows PATH 解決ロジックのユニットテスト
 ```
 
 ### Key Patterns
 
 - Commands are registered in `activate()` and added to `context.subscriptions`
-- External process execution uses `child_process.spawn`. POSIX environments use `shell: false` so `process.kill("SIGTERM")` reaches the real `git-sc` child directly. Windows uses `shell: true` (required for `.cmd` after Node.js CVE-2024-27980 hardening) and cancels via `taskkill /PID <pid> /T /F` to terminate the whole process tree.
-- Commit history loading for reword uses `execFileSync("git", [...])` with explicit args
+- External process execution uses `child_process.spawn`. POSIX environments use `shell: false` so `process.kill("SIGTERM")` reaches the real `git-sc` child directly. Windows resolves `git-sc` to an absolute path via `resolveSpawnCommand` (PATH 走査で `.EXE`/`.CMD`/`.BAT` を探索) before spawn so that the cwd ハイジャック (悪意ある repo 直下の `git-sc.cmd` 優先実行) を防ぐ。`.cmd`/`.bat` の場合のみ Node.js CVE-2024-27980 対策で `shell: true` を併用し、その際はキャンセル時に `taskkill /PID <pid> /T /F` でプロセスツリーごと終了させる。Windows で PATH 上に絶対パスが見つからない場合は spawn せずインストール案内へフォールバックする。
+- Git CLI 呼び出しは `execFileSync("git", ["-C", <dir>, ...])` で作業ディレクトリを引数として渡す。`cwd: <dir>` を使わないことで、Windows の `CreateProcess` がカレントディレクトリを実行ファイル探索パスに含める cwd ハイジャックを回避する。
 - Commands resolve the first reachable Git repository root across open workspace folders before running `git-sc` or `git log`
 - Output is displayed via VS Code `OutputChannel`
 - Progress is shown via `vscode.window.withProgress`
 - Cancellation is guarded to avoid false error notifications after process kill
 - Configuration is read from `vscode.workspace.getConfiguration("gitSmartCommit")`
+- `vscode.commands.executeCommand("git.refresh")` の戻り値（Thenable）は `Promise.resolve(...).catch(...)` で囲み、Git 拡張が無効化されている等で reject した場合に未処理 rejection にせず `OutputChannel` に警告を記録する。
 
 ## Recent Maintenance Notes
 
@@ -163,6 +166,11 @@ src/
 - Added regression tests for the platform-aware spawn options (`shell` flag), `taskkill` invocation on Windows cancellation, and `SIGTERM` delivery on POSIX cancellation in both commit and reword flows.
 - Fixed duplicate UI notifications in `runGitSc` / `rewordCommit` when `spawn("git-sc")` fails on POSIX. Node.js fires both `error` (ENOENT) and `close` (code=null) events, so the `close`/`error` handlers now check the shared `settled` flag before writing to `outputChannel` or calling `showErrorMessage`. Previously users saw both the "git-sc command not found" install dialog and a subsequent "failed: Process exited with code ..." error for a single spawn failure.
 - Added regression tests that emit `error` followed by `close` to verify only one UI notification and no duplicate `failed with code` log line appears in both commit and reword flows.
+- Hardened Windows execution against cwd ハイジャック (悪意ある repo 直下の `git-sc.cmd` / `git.exe` 優先実行)。新規 `src/commands/resolveExecutablePath.ts` で `PATH` を走査し、絶対パス要素のみから実行ファイルを解決する。空文字列・`"."`・`"./"`・`".\\"`・`"bin"`・`".\tools"`・`"C:tools"` 等の相対要素は `path.win32.isAbsolute` で全て除外。`runGitSc` / `rewordCommit` の `spawn` を `resolveSpawnCommand` 経由に置き換え、解決失敗時はフォールバック spawn せずインストール案内へ誘導する。
+- Switched `getGitWorkspaceRoot`、`getRecentCommits`、`getCommitCount` の git 呼び出しを `cwd: <dir>` から `git -C <dir> ...` 引数渡しに変更。Windows の `CreateProcess` が `cwd` を実行ファイル探索パスに含める仕様による cwd ハイジャックリスクを排除した。
+- Fixed `isCommandNotFoundError` で POSIX 終了コード 127 を単独で「未検出」と判定していた誤判定を修正。本拡張は POSIX で `shell: false` で git-sc を spawn するため、`close` で来る 127 は git-sc 自身の終了コード。 9009 (Windows cmd.exe) のみを exit code で判定し、127 はメッセージパターン一致時のみ未検出扱いとする。
+- Wrapped `vscode.commands.executeCommand("git.refresh")` calls with `Promise.resolve(...).catch(...)` in both `runGitSc` and `rewordCommit` so that Git 拡張が無効化されている環境で発生する reject が未処理 rejection にならず、`OutputChannel` に警告として記録される。
+- Added regression tests for: `resolveSpawnCommand` 解決失敗時の早期フォールバック (`spawn` を呼ばずインストール案内)、`git.refresh` reject 時の `OutputChannel` 記録、`resolveExecutableOnPath` の PATH 相対要素除外、`PATHEXT` 既定値、絶対パス検出、空 PATH ハンドリングなど。
 
 ## VS Code Extension Details
 

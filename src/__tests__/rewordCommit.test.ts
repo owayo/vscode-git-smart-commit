@@ -31,12 +31,12 @@ vi.mock("../commands/getGitWorkspaceRoot", () => ({
 
 // Windows シミュレートテストでは PATH 走査の副作用を避けたいので、
 // `resolveSpawnCommand` の挙動を旧実装相当 (POSIX→shell:false / win32→shell:true) に固定する。
+// テストごとに `mockResolveSpawnCommand.mockReturnValueOnce(null)` 等で個別オーバーライドし、
+// 解決失敗 (null) のフォールバック挙動を検証することもできる。
 // 絶対パス解決ロジック自体は `resolveExecutablePath.test.ts` で別途検証する。
+const mockResolveSpawnCommand = vi.fn();
 vi.mock("../commands/resolveExecutablePath", () => ({
-	resolveSpawnCommand: (name: string) => ({
-		command: name,
-		useShell: globalThis.process.platform === "win32",
-	}),
+	resolveSpawnCommand: (...args: unknown[]) => mockResolveSpawnCommand(...args),
 }));
 
 vi.mock("vscode", () => ({
@@ -521,6 +521,11 @@ describe("rewordCommit", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockGetGitWorkspaceRoot.mockReturnValue("/test/workspace");
+		// resolveSpawnCommand の既定挙動を旧実装相当に戻す
+		mockResolveSpawnCommand.mockImplementation((name: string) => ({
+			command: name,
+			useShell: globalThis.process.platform === "win32",
+		}));
 		mockWithProgress.mockImplementation(
 			async (
 				_options: unknown,
@@ -1899,5 +1904,69 @@ describe("rewordCommit", () => {
 				Object.defineProperty(globalThis.process, "platform", originalPlatform);
 			}
 		}
+	});
+
+	it("should abort reword and show installation dialog when resolveSpawnCommand returns null", async () => {
+		// Windows で PATH 上に git-sc が見つからない場合、unsafe な spawn 起動 (cwd ハイジャック)
+		// を回避するためインストール案内へ早期に抜けることを検証する
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		mockResolveSpawnCommand.mockReturnValueOnce(null);
+		mockShowErrorMessage.mockResolvedValue(undefined);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+
+		await expect(promise).rejects.toThrow("git-sc command not found in PATH");
+		expect(mockSpawn).not.toHaveBeenCalled();
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"git-sc command not found. Please install it and ensure it's in your PATH.",
+			"View Installation",
+		);
+
+		const calls = mockOutputChannel.appendLine.mock.calls.map(
+			(c: unknown[]) => c[0],
+		) as string[];
+		expect(
+			calls.some((c) =>
+				c.includes("git-sc not found in PATH. Aborting before unsafe spawn."),
+			),
+		).toBe(true);
+	});
+
+	it("should log Git refresh failure to outputChannel without rejecting reword", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+		// git.refresh が reject するシナリオ（Git 拡張が無効化された等）
+		mockExecuteCommand.mockImplementationOnce(() =>
+			Promise.reject(new Error("git.refresh disabled")),
+		);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(() => proc.__emit("close", 0), 10);
+		await promise;
+
+		expect(mockShowInformationMessage).toHaveBeenCalledWith(
+			"Commit reworded successfully!",
+		);
+		await new Promise((resolve) => setImmediate(resolve));
+
+		const calls = mockOutputChannel.appendLine.mock.calls.map(
+			(c: unknown[]) => c[0],
+		) as string[];
+		expect(
+			calls.some((c) => c.includes("Git refresh failed: git.refresh disabled")),
+		).toBe(true);
 	});
 });

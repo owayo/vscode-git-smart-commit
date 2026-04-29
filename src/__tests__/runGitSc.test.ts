@@ -17,12 +17,12 @@ vi.mock("../commands/getGitWorkspaceRoot", () => ({
 
 // Windows シミュレートテストでは PATH 走査の副作用を避けたいので、
 // `resolveSpawnCommand` の挙動を旧実装相当 (POSIX→shell:false / win32→shell:true) に固定する。
+// テストごとに `mockResolveSpawnCommand.mockReturnValueOnce(null)` 等で個別オーバーライドし、
+// 解決失敗 (null) のフォールバック挙動を検証することもできる。
 // 絶対パス解決ロジック自体は `resolveExecutablePath.test.ts` で別途検証する。
+const mockResolveSpawnCommand = vi.fn();
 vi.mock("../commands/resolveExecutablePath", () => ({
-	resolveSpawnCommand: (name: string) => ({
-		command: name,
-		useShell: globalThis.process.platform === "win32",
-	}),
+	resolveSpawnCommand: (...args: unknown[]) => mockResolveSpawnCommand(...args),
 }));
 
 const mockShowErrorMessage = vi.fn();
@@ -100,6 +100,11 @@ describe("runGitSc", () => {
 	beforeEach(async () => {
 		vi.clearAllMocks();
 		mockGetGitWorkspaceRoot.mockReturnValue("/test/workspace");
+		// resolveSpawnCommand の既定挙動を旧実装相当に戻す
+		mockResolveSpawnCommand.mockImplementation((name: string) => ({
+			command: name,
+			useShell: globalThis.process.platform === "win32",
+		}));
 		mockOutputChannel = {
 			show: vi.fn(),
 			appendLine: vi.fn(),
@@ -1284,5 +1289,61 @@ describe("runGitSc", () => {
 				Object.defineProperty(globalThis.process, "platform", originalPlatform);
 			}
 		}
+	});
+
+	it("should abort and show installation dialog when resolveSpawnCommand returns null", async () => {
+		// Windows で PATH 上に git-sc が見つからない場合、unsafe な spawn 起動 (cwd ハイジャック)
+		// を回避するためインストール案内へ早期に抜けることを検証する
+		mockResolveSpawnCommand.mockReturnValueOnce(null);
+		mockShowErrorMessage.mockResolvedValue(undefined);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		await expect(promise).rejects.toThrow("git-sc command not found in PATH");
+		expect(mockSpawn).not.toHaveBeenCalled();
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"git-sc command not found. Please install it and ensure it's in your PATH.",
+			"View Installation",
+		);
+
+		const calls = mockOutputChannel.appendLine.mock.calls.map(
+			(c: unknown[]) => c[0],
+		) as string[];
+		expect(
+			calls.some((c) =>
+				c.includes("git-sc not found in PATH. Aborting before unsafe spawn."),
+			),
+		).toBe(true);
+	});
+
+	it("should log Git refresh failure to outputChannel without rejecting the run", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+		// git.refresh が reject するシナリオ（Git 拡張が無効化された等）
+		mockExecuteCommand.mockImplementationOnce(() =>
+			Promise.reject(new Error("git.refresh disabled")),
+		);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+		setTimeout(() => proc.__emit("close", 0), 10);
+		await promise;
+
+		// run 自体は成功扱いになり、outputChannel に警告が記録される
+		expect(mockShowInformationMessage).toHaveBeenCalledWith(
+			"Git Smart Commit completed!",
+		);
+		// catch は async なので次マイクロタスクで実行される
+		await new Promise((resolve) => setImmediate(resolve));
+
+		const calls = mockOutputChannel.appendLine.mock.calls.map(
+			(c: unknown[]) => c[0],
+		) as string[];
+		expect(
+			calls.some((c) => c.includes("Git refresh failed: git.refresh disabled")),
+		).toBe(true);
 	});
 });
