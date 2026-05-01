@@ -16,7 +16,7 @@ vi.mock("../commands/getGitWorkspaceRoot", () => ({
 }));
 
 // Windows シミュレートテストでは PATH 走査の副作用を避けたいので、
-// `resolveSpawnCommand` の挙動を旧実装相当 (POSIX→shell:false / win32→shell:true) に固定する。
+// `resolveSpawnCommand` はこのテスト専用の固定値を返す。
 // テストごとに `mockResolveSpawnCommand.mockReturnValueOnce(null)` 等で個別オーバーライドし、
 // 解決失敗 (null) のフォールバック挙動を検証することもできる。
 // 絶対パス解決ロジック自体は `resolveExecutablePath.test.ts` で別途検証する。
@@ -100,7 +100,7 @@ describe("runGitSc", () => {
 	beforeEach(async () => {
 		vi.clearAllMocks();
 		mockGetGitWorkspaceRoot.mockReturnValue("/test/workspace");
-		// resolveSpawnCommand の既定挙動を旧実装相当に戻す
+		// resolveSpawnCommand の既定挙動をこのテスト専用の固定値に戻す
 		mockResolveSpawnCommand.mockImplementation((name: string) => ({
 			command: name,
 			useShell: globalThis.process.platform === "win32",

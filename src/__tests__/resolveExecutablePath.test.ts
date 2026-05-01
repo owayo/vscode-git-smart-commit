@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { accessSync, existsSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	resolveExecutableOnPath,
@@ -6,9 +6,12 @@ import {
 } from "../commands/resolveExecutablePath";
 
 vi.mock("node:fs", () => ({
+	accessSync: vi.fn(),
+	constants: { X_OK: 1 },
 	existsSync: vi.fn(),
 }));
 
+const mockAccessSync = vi.mocked(accessSync);
 const mockExistsSync = vi.mocked(existsSync);
 
 describe("resolveExecutableOnPath", () => {
@@ -49,15 +52,42 @@ describe("resolveExecutableOnPath", () => {
 		});
 	}
 
-	it("returns null on non-Windows platforms (POSIX 探索は libc に委ねる)", () => {
+	it("POSIX でも絶対 PATH 要素から実行可能ファイルを返す", () => {
 		setPlatform("darwin");
-		expect(resolveExecutableOnPath("git-sc")).toBeNull();
+		globalThis.process.env.PATH = ".:/usr/local/bin:/usr/bin";
+		mockAccessSync.mockImplementation((p: unknown) => {
+			if (p === "/usr/local/bin/git-sc") {
+				return;
+			}
+			throw new Error("not executable");
+		});
+
+		expect(resolveExecutableOnPath("git-sc")).toBe("/usr/local/bin/git-sc");
 		expect(mockExistsSync).not.toHaveBeenCalled();
 	});
 
-	it("returns null on Linux without invoking existsSync", () => {
+	it("POSIX でも空要素・カレントディレクトリ・相対 PATH 要素を除外する", () => {
 		setPlatform("linux");
+		globalThis.process.env.PATH = ":.:./bin:bin:/usr/bin";
+		mockAccessSync.mockImplementation((p: unknown) => {
+			if (p === "/usr/bin/git-sc") {
+				return;
+			}
+			throw new Error("not executable");
+		});
+
+		expect(resolveExecutableOnPath("git-sc")).toBe("/usr/bin/git-sc");
+		const calls = mockAccessSync.mock.calls.map((c) => c[0] as string);
+		expect(calls).toEqual(["/usr/bin/git-sc"]);
+		expect(mockExistsSync).not.toHaveBeenCalled();
+	});
+
+	it("POSIX で PATH が相対要素のみの場合は null を返す", () => {
+		setPlatform("linux");
+		globalThis.process.env.PATH = ":.:./bin:bin";
+
 		expect(resolveExecutableOnPath("git-sc")).toBeNull();
+		expect(mockAccessSync).not.toHaveBeenCalled();
 		expect(mockExistsSync).not.toHaveBeenCalled();
 	});
 
@@ -215,20 +245,46 @@ describe("resolveSpawnCommand", () => {
 		});
 	}
 
-	it("POSIX では bare command + shell:false を返す (PATH 探索は libc に任せる)", () => {
+	it("POSIX では絶対パス + shell:false を返す", () => {
 		setPlatform("darwin");
+		globalThis.process.env.PATH = "/usr/local/bin:/usr/bin";
+		mockAccessSync.mockImplementation((p: unknown) => {
+			if (p === "/usr/local/bin/git-sc") {
+				return;
+			}
+			throw new Error("not executable");
+		});
+
 		expect(resolveSpawnCommand("git-sc")).toEqual({
-			command: "git-sc",
+			command: "/usr/local/bin/git-sc",
 			useShell: false,
 		});
 	});
 
-	it("Linux でも bare command + shell:false を返す", () => {
-		setPlatform("linux");
-		expect(resolveSpawnCommand("git-sc")).toEqual({
-			command: "git-sc",
+	it("POSIX では .cmd 名でも shell:false を返す", () => {
+		setPlatform("darwin");
+		globalThis.process.env.PATH = "/usr/local/bin";
+		mockAccessSync.mockImplementation((p: unknown) => {
+			if (p === "/usr/local/bin/git-sc.cmd") {
+				return;
+			}
+			throw new Error("not executable");
+		});
+
+		expect(resolveSpawnCommand("git-sc.cmd")).toEqual({
+			command: "/usr/local/bin/git-sc.cmd",
 			useShell: false,
 		});
+	});
+
+	it("POSIX で実行可能ファイルが見つからない場合は null を返す", () => {
+		setPlatform("linux");
+		globalThis.process.env.PATH = ".:/usr/bin";
+		mockAccessSync.mockImplementation(() => {
+			throw new Error("not executable");
+		});
+
+		expect(resolveSpawnCommand("git-sc")).toBeNull();
 	});
 
 	it("Windows で .CMD が見つかった場合は絶対パス + shell:true を返す", () => {

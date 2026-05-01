@@ -47,7 +47,7 @@ src/
     rewordCommit.ts         # Commit reword UI + git log parsing
     isCommandNotFoundError.ts # Cross-platform command-not-found detection
     terminateProcessForCancellation.ts # Safe cancellation helper for POSIX and Windows
-    resolveExecutablePath.ts # Windows PATH 走査による実行ファイル絶対パス解決 (cwd ハイジャック対策)
+    resolveExecutablePath.ts # PATH 走査による実行ファイル絶対パス解決 (cwd ハイジャック対策)
   __tests__/
     extension.test.ts       # Extension activation tests
     getGitWorkspaceRoot.test.ts # Git workspace root resolution tests
@@ -55,13 +55,13 @@ src/
     rewordCommit.test.ts    # getRecentCommits & rewordCommit tests
     runGitSc.test.ts        # runGitSc command tests
     terminateProcessForCancellation.test.ts # Cancellation helper tests
-    resolveExecutablePath.test.ts # Windows PATH 解決ロジックのユニットテスト
+    resolveExecutablePath.test.ts # PATH 解決ロジックのユニットテスト
 ```
 
 ### Key Patterns
 
 - Commands are registered in `activate()` and added to `context.subscriptions`
-- External process execution uses `child_process.spawn`. POSIX environments use `shell: false` so `process.kill("SIGTERM")` reaches the real `git-sc` child directly. Windows resolves `git-sc` to an absolute path via `resolveSpawnCommand` (PATH 走査で `.EXE`/`.CMD`/`.BAT` を探索) before spawn so that the cwd ハイジャック (悪意ある repo 直下の `git-sc.cmd` 優先実行) を防ぐ。`.cmd`/`.bat` の場合のみ Node.js CVE-2024-27980 対策で `shell: true` を併用し、その際はキャンセル時に `taskkill /PID <pid> /T /F` でプロセスツリーごと終了させる。Windows で PATH 上に絶対パスが見つからない場合は spawn せずインストール案内へフォールバックする。
+- External process execution uses `child_process.spawn`. POSIX environments use `shell: false` so `process.kill("SIGTERM")` reaches the real `git-sc` child directly. `git-sc` is resolved to an absolute path via `resolveSpawnCommand` before spawn; PATH scanning allows only absolute entries and excludes empty entries, `.`, and relative paths so cwd ハイジャック (悪意ある repo 直下の `git-sc` / `git-sc.cmd` 優先実行) を防ぐ。Windows では `.EXE`/`.CMD`/`.BAT` 等を探索し、`.cmd`/`.bat` の場合のみ Node.js CVE-2024-27980 対策で `shell: true` を併用する。その際はキャンセル時に `taskkill /PID <pid> /T /F` でプロセスツリーごと終了させる。PATH 上に安全な絶対パスが見つからない場合は spawn せずインストール案内へフォールバックする。
 - Git CLI 呼び出しは `execFileSync("git", ["-C", <dir>, ...])` で作業ディレクトリを引数として渡す。`cwd: <dir>` を使わないことで、Windows の `CreateProcess` がカレントディレクトリを実行ファイル探索パスに含める cwd ハイジャックを回避する。
 - Commands resolve the first reachable Git repository root across open workspace folders before running `git-sc` or `git log`
 - Output is displayed via VS Code `OutputChannel`
@@ -72,6 +72,7 @@ src/
 
 ## Recent Maintenance Notes
 
+- Hardened POSIX execution against cwd ハイジャック when `PATH` contains an empty entry, `.`, or a relative path. `resolveSpawnCommand` now resolves `git-sc` from executable absolute PATH entries on POSIX as well as Windows, and falls back to the installation guide when no safe absolute path is found.
 - Biome updated to 2.4.13.
 - Added direct unit tests for `terminateProcessForCancellation`, covering POSIX `SIGTERM`, Windows `taskkill`, and both synchronous/asynchronous `taskkill` startup failures.
 - Windows cancellation now guards `taskkill` startup failures so a failed helper spawn is logged to the output channel instead of surfacing as an unhandled `error` event.

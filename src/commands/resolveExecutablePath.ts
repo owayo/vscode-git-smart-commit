@@ -1,5 +1,29 @@
-import { existsSync } from "node:fs";
+import { accessSync, constants, existsSync } from "node:fs";
 import * as path from "node:path";
+
+function getPathEnvValue(): string {
+	if (globalThis.process.env.PATH !== undefined) {
+		return globalThis.process.env.PATH;
+	}
+
+	if (globalThis.process.platform !== "win32") {
+		return "";
+	}
+
+	const pathKey = Object.keys(globalThis.process.env).find(
+		(key) => key.toLowerCase() === "path",
+	);
+	return pathKey ? (globalThis.process.env[pathKey] ?? "") : "";
+}
+
+function isExecutableFile(candidate: string): boolean {
+	try {
+		accessSync(candidate, constants.X_OK);
+		return true;
+	} catch {
+		return false;
+	}
+}
 
 /**
  * PATH 環境変数を走査して指定コマンドの絶対パスを返す。
@@ -10,43 +34,49 @@ import * as path from "node:path";
  * この関数は PATH 要素のうち絶対パスのみを許容し、空文字列・カレントディレクトリ参照・
  * `.\tools` のような相対パスは全て除外する。
  *
- * POSIX の `execvp` はカレントディレクトリを含めないため呼び出し不要。
+ * POSIX の `execvp` も PATH に空要素や `.` が含まれるとカレントディレクトリを
+ * 探索するため、Windows と同様に絶対パス要素だけを許可する。
  *
  * @returns 解決できた絶対パス、見つからない場合は null
  */
 export function resolveExecutableOnPath(name: string): string | null {
-	if (globalThis.process.platform !== "win32") {
-		// POSIX は libc の execvp に PATH 探索を委ね、カレントディレクトリは含まれない
-		return null;
-	}
+	const isWindows = globalThis.process.platform === "win32";
+	const pathModule = isWindows ? path.win32 : path.posix;
+	const pathDelimiter = isWindows ? ";" : ":";
 
-	// Windows のパス区切りに準拠（POSIX 上で実行されるテスト含めセパレータを ";" に固定）
-	const pathDirs = (globalThis.process.env.PATH ?? "").split(";");
+	const pathDirs = getPathEnvValue().split(pathDelimiter);
 	const pathExts = (globalThis.process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM")
 		.split(";")
 		.map((ext) => ext.trim())
 		.filter(Boolean);
 
 	for (const rawDir of pathDirs) {
-		const dir = rawDir.trim();
+		const dir = isWindows ? rawDir.trim() : rawDir;
 		// 絶対パスのみ許可する（空文字列・"."・"./"・".\\"・"bin"・".\tools"・"C:tools" 等は全て除外）。
-		// 相対要素を許すと Windows の `CreateProcess` がそれをカレントディレクトリ相対として
-		// 解決し、`spawn(..., { cwd: workspaceRoot })` と合わさって repo 配下のバイナリが
-		// 起動する余地を残してしまうため、ここで完全に弾く。
-		if (!dir || !path.win32.isAbsolute(dir)) {
+		// 相対要素を許すと `spawn(..., { cwd: workspaceRoot })` と合わさって
+		// repo 配下のバイナリが起動する余地を残してしまうため、ここで完全に弾く。
+		if (!dir || !pathModule.isAbsolute(dir)) {
+			continue;
+		}
+
+		if (!isWindows) {
+			const candidate = pathModule.join(dir, name);
+			if (isExecutableFile(candidate)) {
+				return candidate;
+			}
 			continue;
 		}
 
 		// PATHEXT 順で拡張子付き候補を確認（`path.win32.join` で Windows 形式を維持）
 		for (const ext of pathExts) {
-			const candidate = path.win32.join(dir, name + ext);
+			const candidate = pathModule.join(dir, name + ext);
 			if (existsSync(candidate)) {
 				return candidate;
 			}
 		}
 
 		// name 自体が拡張子を含むケース
-		const direct = path.win32.join(dir, name);
+		const direct = pathModule.join(dir, name);
 		if (existsSync(direct)) {
 			return direct;
 		}
@@ -59,13 +89,13 @@ export function resolveExecutableOnPath(name: string): string | null {
  * `child_process.spawn` で安全に実行ファイルを起動するための
  * コマンドパスとシェル指定を返す。
  *
- * - POSIX: bare command を返す。`shell: false` で起動でき、`execvp` の PATH 探索は
- *   カレントディレクトリを含まないため安全。
+ * - POSIX: PATH の絶対パス要素から実行可能ファイルを解決して返す。
+ *   空要素や `.` が含まれる PATH でも workspaceRoot 配下の実行ファイルを拾わない。
  * - Windows: PATH 走査で絶対パスを解決して bare command 起動時の cwd ハイジャックを回避する。
  *   `.cmd` / `.bat` は CVE-2024-27980 対策で `shell: true` が必須、それ以外（`.exe` 等）は
  *   `shell: false` で直接起動できる。
  *
- * Windows で PATH 上に解決できなかった場合は `null` を返す。
+ * PATH 上に解決できなかった場合は `null` を返す。
  * 呼び出し側はこれを受けて未検出ダイアログ等にフォールバックすること。
  * （bare command + `shell: true` でフォールバックすると cwd ハイジャックが復活するため使わない）
  */
@@ -73,10 +103,6 @@ export function resolveSpawnCommand(name: string): {
 	command: string;
 	useShell: boolean;
 } | null {
-	if (globalThis.process.platform !== "win32") {
-		return { command: name, useShell: false };
-	}
-
 	const resolved = resolveExecutableOnPath(name);
 	if (!resolved) {
 		// 安全な絶対パスが得られないため、呼び出し側で未検出として扱う
@@ -84,6 +110,8 @@ export function resolveSpawnCommand(name: string): {
 	}
 
 	const lower = resolved.toLowerCase();
-	const useShell = lower.endsWith(".cmd") || lower.endsWith(".bat");
+	const useShell =
+		globalThis.process.platform === "win32" &&
+		(lower.endsWith(".cmd") || lower.endsWith(".bat"));
 	return { command: resolved, useShell };
 }

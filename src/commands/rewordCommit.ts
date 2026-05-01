@@ -243,14 +243,14 @@ async function runGitScReword(
 
 				// POSIX では shell: false で起動することで process.kill が
 				// 中継シェルではなく実際の git-sc プロセスへ届くようにする。
-				// Windows では PATH を走査して絶対パスで起動することで cwd ハイジャック
-				// (悪意ある repo 直下の git-sc.cmd を優先実行する攻撃) を防ぎ、
-				// .cmd/.bat の場合のみ Node.js の CVE-2024-27980 対策で shell: true を使う。
+				// PATH は絶対パス要素だけを走査し、空要素・"."・相対要素による
+				// cwd ハイジャック (悪意ある repo 直下の git-sc を優先実行する攻撃) を防ぐ。
+				// Windows の .cmd/.bat の場合のみ Node.js の CVE-2024-27980 対策で shell: true を使う。
 				// shell: true 利用時はキャンセルで taskkill /T /F により
 				// 中継シェルもろともプロセスツリーを終了させる。
 				const resolved = resolveSpawnCommand("git-sc");
 				if (!resolved) {
-					// Windows で PATH に安全な絶対パスが見つからない場合は spawn せず、
+					// PATH に安全な絶対パスが見つからない場合は spawn せず、
 					// インストール案内へフォールバックする（フォールバック起動は
 					// cwd ハイジャックが残るため避ける）
 					outputChannel.appendLine(
