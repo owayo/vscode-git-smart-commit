@@ -1,32 +1,43 @@
-import { accessSync, existsSync } from "node:fs";
+import { accessSync, type Stats, statSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	resolveExecutableOnPath,
+	resolveNativeExecutableOnPath,
 	resolveSpawnCommand,
+	resolveWindowsSystemExecutable,
 } from "../commands/resolveExecutablePath";
 
 vi.mock("node:fs", () => ({
 	accessSync: vi.fn(),
 	constants: { X_OK: 1 },
-	existsSync: vi.fn(),
+	statSync: vi.fn(),
 }));
 
 const mockAccessSync = vi.mocked(accessSync);
-const mockExistsSync = vi.mocked(existsSync);
+const mockStatSync = vi.mocked(statSync);
+
+function mockFileStat(isFile: boolean): Stats {
+	return { isFile: () => isFile } as Stats;
+}
 
 describe("resolveExecutableOnPath", () => {
 	let originalPlatform: PropertyDescriptor | undefined;
 	let originalPath: string | undefined;
 	let originalPathExt: string | undefined;
+	let originalSystemRoot: string | undefined;
+	let originalWindir: string | undefined;
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mockStatSync.mockReturnValue(mockFileStat(true));
 		originalPlatform = Object.getOwnPropertyDescriptor(
 			globalThis.process,
 			"platform",
 		);
 		originalPath = globalThis.process.env.PATH;
 		originalPathExt = globalThis.process.env.PATHEXT;
+		originalSystemRoot = globalThis.process.env.SystemRoot;
+		originalWindir = globalThis.process.env.WINDIR;
 	});
 
 	afterEach(() => {
@@ -42,6 +53,16 @@ describe("resolveExecutableOnPath", () => {
 			delete globalThis.process.env.PATHEXT;
 		} else {
 			globalThis.process.env.PATHEXT = originalPathExt;
+		}
+		if (originalSystemRoot === undefined) {
+			delete globalThis.process.env.SystemRoot;
+		} else {
+			globalThis.process.env.SystemRoot = originalSystemRoot;
+		}
+		if (originalWindir === undefined) {
+			delete globalThis.process.env.WINDIR;
+		} else {
+			globalThis.process.env.WINDIR = originalWindir;
 		}
 	});
 
@@ -63,7 +84,7 @@ describe("resolveExecutableOnPath", () => {
 		});
 
 		expect(resolveExecutableOnPath("git-sc")).toBe("/usr/local/bin/git-sc");
-		expect(mockExistsSync).not.toHaveBeenCalled();
+		expect(mockStatSync).toHaveBeenCalledWith("/usr/local/bin/git-sc");
 	});
 
 	it("POSIX でも空要素・カレントディレクトリ・相対 PATH 要素を除外する", () => {
@@ -79,7 +100,30 @@ describe("resolveExecutableOnPath", () => {
 		expect(resolveExecutableOnPath("git-sc")).toBe("/usr/bin/git-sc");
 		const calls = mockAccessSync.mock.calls.map((c) => c[0] as string);
 		expect(calls).toEqual(["/usr/bin/git-sc"]);
-		expect(mockExistsSync).not.toHaveBeenCalled();
+		expect(mockStatSync).toHaveBeenCalledWith("/usr/bin/git-sc");
+	});
+
+	it("POSIX で実行権限付きディレクトリを候補から除外する", () => {
+		setPlatform("linux");
+		globalThis.process.env.PATH = "/usr/local/bin:/usr/bin";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "/usr/local/bin/git-sc") {
+				return mockFileStat(false);
+			}
+			if (p === "/usr/bin/git-sc") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+		mockAccessSync.mockImplementation((p: unknown) => {
+			if (p === "/usr/bin/git-sc") {
+				return;
+			}
+			throw new Error("not executable");
+		});
+
+		expect(resolveExecutableOnPath("git-sc")).toBe("/usr/bin/git-sc");
+		expect(mockAccessSync).not.toHaveBeenCalledWith("/usr/local/bin/git-sc", 1);
 	});
 
 	it("POSIX で PATH が相対要素のみの場合は null を返す", () => {
@@ -88,16 +132,19 @@ describe("resolveExecutableOnPath", () => {
 
 		expect(resolveExecutableOnPath("git-sc")).toBeNull();
 		expect(mockAccessSync).not.toHaveBeenCalled();
-		expect(mockExistsSync).not.toHaveBeenCalled();
+		expect(mockStatSync).not.toHaveBeenCalled();
 	});
 
 	it("returns the absolute path when found in PATH on Windows", () => {
 		setPlatform("win32");
 		globalThis.process.env.PATH = "C:\\tools;C:\\Program Files\\Git\\cmd";
 		globalThis.process.env.PATHEXT = ".EXE;.CMD";
-		mockExistsSync.mockImplementation(
-			(p: unknown) => p === "C:\\Program Files\\Git\\cmd\\git-sc.CMD",
-		);
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\Program Files\\Git\\cmd\\git-sc.CMD") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
 
 		const result = resolveExecutableOnPath("git-sc");
 		expect(result).toBe("C:\\Program Files\\Git\\cmd\\git-sc.CMD");
@@ -107,14 +154,17 @@ describe("resolveExecutableOnPath", () => {
 		setPlatform("win32");
 		globalThis.process.env.PATH = ";C:\\tools";
 		globalThis.process.env.PATHEXT = ".EXE";
-		mockExistsSync.mockImplementation(
-			(p: unknown) => p === "C:\\tools\\git-sc.EXE",
-		);
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\tools\\git-sc.EXE") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
 
 		const result = resolveExecutableOnPath("git-sc");
 		expect(result).toBe("C:\\tools\\git-sc.EXE");
-		// 空文字列要素では existsSync が呼ばれないこと
-		const calls = mockExistsSync.mock.calls.map((c) => c[0] as string);
+		// 空文字列要素では statSync が呼ばれないこと
+		const calls = mockStatSync.mock.calls.map((c) => c[0] as string);
 		expect(calls.every((c) => !c.startsWith("git-sc"))).toBe(true);
 	});
 
@@ -122,14 +172,17 @@ describe("resolveExecutableOnPath", () => {
 		setPlatform("win32");
 		globalThis.process.env.PATH = ".;./;.\\;C:\\tools";
 		globalThis.process.env.PATHEXT = ".EXE";
-		mockExistsSync.mockImplementation(
-			(p: unknown) => p === "C:\\tools\\git-sc.EXE",
-		);
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\tools\\git-sc.EXE") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
 
 		const result = resolveExecutableOnPath("git-sc");
 		expect(result).toBe("C:\\tools\\git-sc.EXE");
-		// カレントディレクトリ参照に対して existsSync が呼ばれないこと
-		const calls = mockExistsSync.mock.calls.map((c) => c[0] as string);
+		// カレントディレクトリ参照に対して statSync が呼ばれないこと
+		const calls = mockStatSync.mock.calls.map((c) => c[0] as string);
 		expect(calls).not.toContain(".\\git-sc.EXE");
 		expect(calls).not.toContain(".\\\\git-sc.EXE");
 	});
@@ -141,17 +194,38 @@ describe("resolveExecutableOnPath", () => {
 		setPlatform("win32");
 		globalThis.process.env.PATH = "bin;.\\tools;C:tools;C:\\Windows";
 		globalThis.process.env.PATHEXT = ".EXE";
-		mockExistsSync.mockImplementation(
-			(p: unknown) => p === "C:\\Windows\\git-sc.EXE",
-		);
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\Windows\\git-sc.EXE") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
 
 		const result = resolveExecutableOnPath("git-sc");
 		expect(result).toBe("C:\\Windows\\git-sc.EXE");
-		const calls = mockExistsSync.mock.calls.map((c) => c[0] as string);
+		const calls = mockStatSync.mock.calls.map((c) => c[0] as string);
 		// 相対要素由来の候補は走査されない
 		expect(calls.some((c) => c.startsWith("bin"))).toBe(false);
 		expect(calls.some((c) => c.startsWith(".\\tools"))).toBe(false);
 		expect(calls.some((c) => c.startsWith("C:tools"))).toBe(false);
+	});
+
+	it("Windows で同名ディレクトリを候補から除外する", () => {
+		setPlatform("win32");
+		globalThis.process.env.PATH = "C:\\tools;C:\\bin";
+		globalThis.process.env.PATHEXT = ".EXE";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\tools\\git-sc.EXE") {
+				return mockFileStat(false);
+			}
+			if (p === "C:\\bin\\git-sc.EXE") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		const result = resolveExecutableOnPath("git-sc");
+		expect(result).toBe("C:\\bin\\git-sc.EXE");
 	});
 
 	it("returns null when PATH is empty", () => {
@@ -166,20 +240,23 @@ describe("resolveExecutableOnPath", () => {
 		setPlatform("win32");
 		globalThis.process.env.PATH = ".;.\\\\bin;tools";
 		globalThis.process.env.PATHEXT = ".EXE";
-		mockExistsSync.mockReturnValue(true);
+		mockStatSync.mockReturnValue(mockFileStat(true));
 
 		const result = resolveExecutableOnPath("git-sc");
 		expect(result).toBeNull();
-		expect(mockExistsSync).not.toHaveBeenCalled();
+		expect(mockStatSync).not.toHaveBeenCalled();
 	});
 
 	it("falls back to PATHEXT default when env var is missing", () => {
 		setPlatform("win32");
 		globalThis.process.env.PATH = "C:\\tools";
 		delete globalThis.process.env.PATHEXT;
-		mockExistsSync.mockImplementation(
-			(p: unknown) => p === "C:\\tools\\git-sc.BAT",
-		);
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\tools\\git-sc.BAT") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
 
 		const result = resolveExecutableOnPath("git-sc");
 		expect(result).toBe("C:\\tools\\git-sc.BAT");
@@ -189,9 +266,12 @@ describe("resolveExecutableOnPath", () => {
 		setPlatform("win32");
 		globalThis.process.env.PATH = "C:\\tools";
 		globalThis.process.env.PATHEXT = ".EXE";
-		mockExistsSync.mockImplementation(
-			(p: unknown) => p === "C:\\tools\\git-sc.exe",
-		);
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\tools\\git-sc.exe") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
 
 		const result = resolveExecutableOnPath("git-sc.exe");
 		expect(result).toBe("C:\\tools\\git-sc.exe");
@@ -201,9 +281,65 @@ describe("resolveExecutableOnPath", () => {
 		setPlatform("win32");
 		globalThis.process.env.PATH = "C:\\one;C:\\two";
 		globalThis.process.env.PATHEXT = ".EXE";
-		mockExistsSync.mockReturnValue(false);
+		mockStatSync.mockImplementation(() => {
+			throw new Error("not found");
+		});
 
 		expect(resolveExecutableOnPath("git-sc")).toBeNull();
+	});
+
+	it("Windows の native 実行ファイル解決では .CMD より .EXE を優先する", () => {
+		setPlatform("win32");
+		globalThis.process.env.PATH = "C:\\tools";
+		globalThis.process.env.PATHEXT = ".CMD;.EXE";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\tools\\git.EXE") {
+				return mockFileStat(true);
+			}
+			if (p === "C:\\tools\\git.CMD") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		expect(resolveNativeExecutableOnPath("git")).toBe("C:\\tools\\git.EXE");
+	});
+
+	it("Windows の native 実行ファイル解決では .BAT だけの場合は null を返す", () => {
+		setPlatform("win32");
+		globalThis.process.env.PATH = "C:\\tools";
+		globalThis.process.env.PATHEXT = ".BAT";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\tools\\git.BAT") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		expect(resolveNativeExecutableOnPath("git")).toBeNull();
+	});
+
+	it("Windows の System32 実行ファイルを SystemRoot から絶対パスで解決する", () => {
+		setPlatform("win32");
+		globalThis.process.env.SystemRoot = "C:\\Windows";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\Windows\\System32\\taskkill.exe") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		expect(resolveWindowsSystemExecutable("taskkill")).toBe(
+			"C:\\Windows\\System32\\taskkill.exe",
+		);
+	});
+
+	it("Windows の System32 実行ファイル解決は相対 SystemRoot を拒否する", () => {
+		setPlatform("win32");
+		globalThis.process.env.SystemRoot = "Windows";
+
+		expect(resolveWindowsSystemExecutable("taskkill")).toBeNull();
+		expect(mockStatSync).not.toHaveBeenCalled();
 	});
 });
 
@@ -214,6 +350,7 @@ describe("resolveSpawnCommand", () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mockStatSync.mockReturnValue(mockFileStat(true));
 		originalPlatform = Object.getOwnPropertyDescriptor(
 			globalThis.process,
 			"platform",
@@ -291,9 +428,12 @@ describe("resolveSpawnCommand", () => {
 		setPlatform("win32");
 		globalThis.process.env.PATH = "C:\\Program Files\\Git\\cmd";
 		globalThis.process.env.PATHEXT = ".EXE;.CMD";
-		mockExistsSync.mockImplementation(
-			(p: unknown) => p === "C:\\Program Files\\Git\\cmd\\git-sc.CMD",
-		);
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\Program Files\\Git\\cmd\\git-sc.CMD") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
 
 		expect(resolveSpawnCommand("git-sc")).toEqual({
 			command: "C:\\Program Files\\Git\\cmd\\git-sc.CMD",
@@ -305,9 +445,12 @@ describe("resolveSpawnCommand", () => {
 		setPlatform("win32");
 		globalThis.process.env.PATH = "C:\\bin";
 		globalThis.process.env.PATHEXT = ".EXE;.CMD";
-		mockExistsSync.mockImplementation(
-			(p: unknown) => p === "C:\\bin\\git-sc.EXE",
-		);
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\bin\\git-sc.EXE") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
 
 		expect(resolveSpawnCommand("git-sc")).toEqual({
 			command: "C:\\bin\\git-sc.EXE",
@@ -319,9 +462,12 @@ describe("resolveSpawnCommand", () => {
 		setPlatform("win32");
 		globalThis.process.env.PATH = "C:\\bin";
 		globalThis.process.env.PATHEXT = ".BAT";
-		mockExistsSync.mockImplementation(
-			(p: unknown) => p === "C:\\bin\\git-sc.BAT",
-		);
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\bin\\git-sc.BAT") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
 
 		expect(resolveSpawnCommand("git-sc")).toEqual({
 			command: "C:\\bin\\git-sc.BAT",
@@ -333,7 +479,9 @@ describe("resolveSpawnCommand", () => {
 		setPlatform("win32");
 		globalThis.process.env.PATH = "C:\\bin";
 		globalThis.process.env.PATHEXT = ".EXE";
-		mockExistsSync.mockReturnValue(false);
+		mockStatSync.mockImplementation(() => {
+			throw new Error("not found");
+		});
 
 		expect(resolveSpawnCommand("git-sc")).toBeNull();
 	});

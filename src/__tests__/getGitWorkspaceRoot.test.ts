@@ -2,8 +2,16 @@ import { execFileSync } from "child_process";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getGitWorkspaceRoot } from "../commands/getGitWorkspaceRoot";
 
+const GIT_COMMAND = "/usr/bin/git";
+const mockResolveNativeExecutableOnPath = vi.fn();
+
 vi.mock("child_process", () => ({
 	execFileSync: vi.fn(),
+}));
+
+vi.mock("../commands/resolveExecutablePath", () => ({
+	resolveNativeExecutableOnPath: (...args: unknown[]) =>
+		mockResolveNativeExecutableOnPath(...args),
 }));
 
 const mockExecFileSync = vi.mocked(execFileSync);
@@ -11,6 +19,7 @@ const mockExecFileSync = vi.mocked(execFileSync);
 describe("getGitWorkspaceRoot", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mockResolveNativeExecutableOnPath.mockReturnValue(GIT_COMMAND);
 	});
 
 	it("should skip non-git folders and return the first resolved Git root", () => {
@@ -26,10 +35,10 @@ describe("getGitWorkspaceRoot", () => {
 		] as never);
 
 		expect(workspaceRoot).toBe("/workspace/repo");
-		// `-C <dir>` で作業ディレクトリを引数に渡す（cwd ハイジャック対策）
+		// git 実行ファイルは安全に解決した絶対パスを使い、作業ディレクトリは `-C <dir>` で渡す。
 		expect(mockExecFileSync).toHaveBeenNthCalledWith(
 			1,
-			"git",
+			GIT_COMMAND,
 			["-C", "/workspace/plain", "rev-parse", "--show-toplevel"],
 			expect.objectContaining({
 				encoding: "utf-8",
@@ -39,7 +48,7 @@ describe("getGitWorkspaceRoot", () => {
 		);
 		expect(mockExecFileSync).toHaveBeenNthCalledWith(
 			2,
-			"git",
+			GIT_COMMAND,
 			["-C", "/workspace/repo/packages/app", "rev-parse", "--show-toplevel"],
 			expect.objectContaining({
 				encoding: "utf-8",
@@ -87,6 +96,16 @@ describe("getGitWorkspaceRoot", () => {
 		const workspaceRoot = getGitWorkspaceRoot([] as never);
 
 		expect(workspaceRoot).toBeNull();
+		expect(mockExecFileSync).not.toHaveBeenCalled();
+		expect(mockResolveNativeExecutableOnPath).not.toHaveBeenCalled();
+	});
+
+	it("should throw ENOENT error when safe git executable cannot be resolved", () => {
+		mockResolveNativeExecutableOnPath.mockReturnValue(null);
+
+		expect(() =>
+			getGitWorkspaceRoot([{ uri: { fsPath: "/workspace/folder" } }] as never),
+		).toThrow("spawn git ENOENT");
 		expect(mockExecFileSync).not.toHaveBeenCalled();
 	});
 

@@ -61,8 +61,8 @@ src/
 ### Key Patterns
 
 - Commands are registered in `activate()` and added to `context.subscriptions`
-- External process execution uses `child_process.spawn`. POSIX environments use `shell: false` so `process.kill("SIGTERM")` reaches the real `git-sc` child directly. `git-sc` is resolved to an absolute path via `resolveSpawnCommand` before spawn; PATH scanning allows only absolute entries and excludes empty entries, `.`, and relative paths so cwd ハイジャック (悪意ある repo 直下の `git-sc` / `git-sc.cmd` 優先実行) を防ぐ。Windows では `.EXE`/`.CMD`/`.BAT` 等を探索し、`.cmd`/`.bat` の場合のみ Node.js CVE-2024-27980 対策で `shell: true` を併用する。その際はキャンセル時に `taskkill /PID <pid> /T /F` でプロセスツリーごと終了させる。PATH 上に安全な絶対パスが見つからない場合は spawn せずインストール案内へフォールバックする。
-- Git CLI 呼び出しは `execFileSync("git", ["-C", <dir>, ...])` で作業ディレクトリを引数として渡す。`cwd: <dir>` を使わないことで、Windows の `CreateProcess` がカレントディレクトリを実行ファイル探索パスに含める cwd ハイジャックを回避する。
+- External process execution uses `child_process.spawn`. POSIX environments use `shell: false` so `process.kill("SIGTERM")` reaches the real `git-sc` child directly. `git-sc` is resolved to an absolute path via `resolveSpawnCommand` before spawn; PATH scanning allows only absolute entries and excludes empty entries, `.`, and relative paths so cwd ハイジャック (悪意ある repo 直下の `git-sc` / `git-sc.cmd` 優先実行) を防ぐ。Windows では `.EXE`/`.CMD`/`.BAT` 等を探索し、`.cmd`/`.bat` の場合のみ Node.js CVE-2024-27980 対策で `shell: true` を併用する。その際はキャンセル時に `SystemRoot\\System32\\taskkill.exe` または安全に解決した native `taskkill` を絶対パスで起動し、`/PID <pid> /T /F` でプロセスツリーごと終了させる。PATH 上に安全な絶対パスが見つからない場合は spawn せずインストール案内へフォールバックする。
+- Git CLI 呼び出しは `resolveNativeExecutableOnPath("git")` で `.exe`/`.com` 等の native 実行ファイルを絶対パスに解決してから `execFileSync(<gitPath>, ["-C", <dir>, ...])` で実行する。bare command と `cwd: <dir>` を使わないことで、Windows の `CreateProcess` がカレントディレクトリを実行ファイル探索パスに含める cwd ハイジャックを回避する。
 - Commands resolve the first reachable Git repository root across open workspace folders before running `git-sc` or `git log`
 - Output is displayed via VS Code `OutputChannel`
 - Progress is shown via `vscode.window.withProgress`
@@ -72,6 +72,10 @@ src/
 
 ## Recent Maintenance Notes
 
+- Hardened executable resolution to require a regular file, so executable directories or same-name directories on PATH are no longer treated as valid `git-sc` / `git` candidates.
+- Git CLI calls now resolve `git` to a safe native absolute executable path before `execFileSync`, while still passing repository location via `-C <dir>`.
+- Windows cancellation now resolves `taskkill` via `SystemRoot\\System32\\taskkill.exe` or safe native PATH lookup before spawn, avoiding bare command execution; non-zero `taskkill` exits are logged to the output channel.
+- Added regression tests for directory candidates on POSIX/Windows PATH, native-only `git` resolution, safe `taskkill` resolution/fallback/failure logging, and unresolved safe `git` executable errors.
 - Hardened POSIX execution against cwd ハイジャック when `PATH` contains an empty entry, `.`, or a relative path. `resolveSpawnCommand` now resolves `git-sc` from executable absolute PATH entries on POSIX as well as Windows, and falls back to the installation guide when no safe absolute path is found.
 - Biome updated to 2.4.13.
 - Added direct unit tests for `terminateProcessForCancellation`, covering POSIX `SIGTERM`, Windows `taskkill`, and both synchronous/asynchronous `taskkill` startup failures.

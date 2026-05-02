@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockSpawn = vi.fn();
 const mockGetGitWorkspaceRoot = vi.fn();
+const TASKKILL_COMMAND = "C:\\Windows\\System32\\taskkill.exe";
 
 vi.mock("child_process", () => ({
 	spawn: (...args: unknown[]) => mockSpawn(...args),
@@ -21,8 +22,14 @@ vi.mock("../commands/getGitWorkspaceRoot", () => ({
 // 解決失敗 (null) のフォールバック挙動を検証することもできる。
 // 絶対パス解決ロジック自体は `resolveExecutablePath.test.ts` で別途検証する。
 const mockResolveSpawnCommand = vi.fn();
+const mockResolveNativeExecutableOnPath = vi.fn();
+const mockResolveWindowsSystemExecutable = vi.fn();
 vi.mock("../commands/resolveExecutablePath", () => ({
+	resolveNativeExecutableOnPath: (...args: unknown[]) =>
+		mockResolveNativeExecutableOnPath(...args),
 	resolveSpawnCommand: (...args: unknown[]) => mockResolveSpawnCommand(...args),
+	resolveWindowsSystemExecutable: (...args: unknown[]) =>
+		mockResolveWindowsSystemExecutable(...args),
 }));
 
 const mockShowErrorMessage = vi.fn();
@@ -100,6 +107,8 @@ describe("runGitSc", () => {
 	beforeEach(async () => {
 		vi.clearAllMocks();
 		mockGetGitWorkspaceRoot.mockReturnValue("/test/workspace");
+		mockResolveNativeExecutableOnPath.mockReturnValue(null);
+		mockResolveWindowsSystemExecutable.mockReturnValue(TASKKILL_COMMAND);
 		// resolveSpawnCommand の既定挙動をこのテスト専用の固定値に戻す
 		mockResolveSpawnCommand.mockImplementation((name: string) => ({
 			command: name,
@@ -1230,7 +1239,7 @@ describe("runGitSc", () => {
 			await progressPromise;
 
 			expect(mockSpawn).toHaveBeenCalledWith(
-				"taskkill",
+				TASKKILL_COMMAND,
 				["/PID", "4242", "/T", "/F"],
 				expect.objectContaining({ stdio: "ignore", windowsHide: true }),
 			);

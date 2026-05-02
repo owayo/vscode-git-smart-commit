@@ -1,5 +1,6 @@
 import { execFileSync } from "child_process";
 import type * as vscode from "vscode";
+import { resolveNativeExecutableOnPath } from "./resolveExecutablePath";
 
 /** git rev-parse が「Git 管理外」として返すエラーかどうかを判定する */
 function isNotGitRepositoryError(error: unknown): boolean {
@@ -15,17 +16,27 @@ function getGitEnglishEnv() {
 	};
 }
 
+function resolveGitExecutable(): string {
+	const gitCommand = resolveNativeExecutableOnPath("git");
+	if (!gitCommand) {
+		throw new Error("spawn git ENOENT");
+	}
+	return gitCommand;
+}
+
 export function getGitWorkspaceRoot(
 	workspaceFolders: readonly vscode.WorkspaceFolder[],
 ): string | null {
+	let gitCommand: string | undefined;
+
 	for (const folder of workspaceFolders) {
 		try {
-			// `-C <dir>` で作業ディレクトリを git に直接指定する。
-			// `cwd` で渡すと Windows の `CreateProcess` がカレントディレクトリを
-			// 実行ファイル探索パスに含め、悪意ある repo 直下の `git.exe` を
-			// 優先実行してしまう (cwd ハイジャック) リスクがあるため避ける。
+			gitCommand ??= resolveGitExecutable();
+			// git 実行ファイルは絶対パスで起動し、対象リポジトリは `-C <dir>` で渡す。
+			// bare command や `cwd` 指定に依存すると、Windows の実行ファイル探索順により
+			// カレントディレクトリ配下の偽 `git.exe` を拾う余地があるため避ける。
 			const workspaceRoot = execFileSync(
-				"git",
+				gitCommand,
 				["-C", folder.uri.fsPath, "rev-parse", "--show-toplevel"],
 				{
 					encoding: "utf-8",

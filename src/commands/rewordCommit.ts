@@ -2,7 +2,10 @@ import { execFileSync, spawn } from "child_process";
 import * as vscode from "vscode";
 import { getGitWorkspaceRoot } from "./getGitWorkspaceRoot";
 import { isCommandNotFoundError } from "./isCommandNotFoundError";
-import { resolveSpawnCommand } from "./resolveExecutablePath";
+import {
+	resolveNativeExecutableOnPath,
+	resolveSpawnCommand,
+} from "./resolveExecutablePath";
 import { terminateProcessForCancellation } from "./terminateProcessForCancellation";
 
 export interface CommitInfo {
@@ -30,12 +33,21 @@ function showGitScNotFoundMessage(): void {
 		});
 }
 
+function resolveGitExecutable(): string {
+	const gitCommand = resolveNativeExecutableOnPath("git");
+	if (!gitCommand) {
+		throw new Error("spawn git ENOENT");
+	}
+	return gitCommand;
+}
+
 function getCommitCount(workspaceRoot: string): number | null {
 	try {
-		// `-C <dir>` で作業ディレクトリを git に渡すことで、
-		// Windows での cwd ハイジャック (悪意ある repo 直下の git.exe 優先実行) を防ぐ
+		const gitCommand = resolveGitExecutable();
+		// git 実行ファイルは絶対パスで起動し、対象リポジトリは `-C <dir>` で渡す。
+		// bare command と cwd 指定を組み合わせないことで、偽 `git.exe` の探索余地を断つ。
 		const output = execFileSync(
-			"git",
+			gitCommand,
 			["-C", workspaceRoot, "rev-list", "--count", "--all"],
 			{
 				encoding: "utf-8",
@@ -53,12 +65,13 @@ export function getRecentCommits(
 	limit: number = 10,
 ): CommitInfo[] {
 	const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 10;
+	const gitCommand = resolveGitExecutable();
 	let output: string;
 	try {
-		// `-C <dir>` で作業ディレクトリを git に渡すことで、
-		// Windows での cwd ハイジャックを防ぐ
+		// git 実行ファイルは絶対パスで起動し、対象リポジトリは `-C <dir>` で渡す。
+		// bare command と cwd 指定を組み合わせないことで、偽 `git.exe` の探索余地を断つ。
 		output = execFileSync(
-			"git",
+			gitCommand,
 			[
 				"-C",
 				workspaceRoot,

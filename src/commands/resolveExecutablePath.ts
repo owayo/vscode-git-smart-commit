@@ -1,4 +1,4 @@
-import { accessSync, constants, existsSync } from "node:fs";
+import { accessSync, constants, statSync } from "node:fs";
 import * as path from "node:path";
 
 function getPathEnvValue(): string {
@@ -16,7 +16,30 @@ function getPathEnvValue(): string {
 	return pathKey ? (globalThis.process.env[pathKey] ?? "") : "";
 }
 
+function getWindowsEnvValue(name: string): string {
+	if (globalThis.process.env[name] !== undefined) {
+		return globalThis.process.env[name] ?? "";
+	}
+
+	const envKey = Object.keys(globalThis.process.env).find(
+		(key) => key.toLowerCase() === name.toLowerCase(),
+	);
+	return envKey ? (globalThis.process.env[envKey] ?? "") : "";
+}
+
+function isRegularFile(candidate: string): boolean {
+	try {
+		return statSync(candidate).isFile();
+	} catch {
+		return false;
+	}
+}
+
 function isExecutableFile(candidate: string): boolean {
+	if (!isRegularFile(candidate)) {
+		return false;
+	}
+
 	try {
 		accessSync(candidate, constants.X_OK);
 		return true;
@@ -70,19 +93,77 @@ export function resolveExecutableOnPath(name: string): string | null {
 		// PATHEXT 順で拡張子付き候補を確認（`path.win32.join` で Windows 形式を維持）
 		for (const ext of pathExts) {
 			const candidate = pathModule.join(dir, name + ext);
-			if (existsSync(candidate)) {
+			if (isRegularFile(candidate)) {
 				return candidate;
 			}
 		}
 
 		// name 自体が拡張子を含むケース
 		const direct = pathModule.join(dir, name);
-		if (existsSync(direct)) {
+		if (isRegularFile(direct)) {
 			return direct;
 		}
 	}
 
 	return null;
+}
+
+/**
+ * シェルを介さず `execFileSync` / `spawn` へ直接渡せる native 実行ファイルを解決する。
+ *
+ * Windows の `.cmd` / `.bat` は直接実行できず shell が必要になるため、ここでは `.exe` / `.com`
+ * だけを許可する。`git` や `taskkill` のように shell を不要にしたいコマンドで使う。
+ */
+export function resolveNativeExecutableOnPath(name: string): string | null {
+	if (globalThis.process.platform !== "win32") {
+		return resolveExecutableOnPath(name);
+	}
+
+	const pathDirs = getPathEnvValue().split(";");
+	const directExtension = path.win32.extname(name);
+	const candidateNames = directExtension
+		? [name]
+		: [`${name}.EXE`, `${name}.COM`];
+
+	for (const rawDir of pathDirs) {
+		const dir = rawDir.trim();
+		if (!dir || !path.win32.isAbsolute(dir)) {
+			continue;
+		}
+
+		for (const candidateName of candidateNames) {
+			const candidate = path.win32.join(dir, candidateName);
+			if (isRegularFile(candidate)) {
+				return candidate;
+			}
+		}
+	}
+
+	return null;
+}
+
+/**
+ * Windows の System32 配下にある OS 標準コマンドを絶対パスで解決する。
+ *
+ * `taskkill` などを bare command で起動すると current directory 探索の対象になるため、
+ * SystemRoot/WINDIR から `System32\<name>.exe` を組み立て、通常ファイルの場合だけ返す。
+ */
+export function resolveWindowsSystemExecutable(name: string): string | null {
+	if (globalThis.process.platform !== "win32") {
+		return null;
+	}
+
+	const systemRoot =
+		getWindowsEnvValue("SystemRoot") || getWindowsEnvValue("WINDIR");
+	if (!systemRoot || !path.win32.isAbsolute(systemRoot)) {
+		return null;
+	}
+
+	const executableName = name.toLowerCase().endsWith(".exe")
+		? name
+		: `${name}.exe`;
+	const candidate = path.win32.join(systemRoot, "System32", executableName);
+	return isRegularFile(candidate) ? candidate : null;
 }
 
 /**

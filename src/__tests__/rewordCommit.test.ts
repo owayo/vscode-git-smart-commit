@@ -9,6 +9,8 @@ import {
 	rewordCommit,
 } from "../commands/rewordCommit";
 
+const GIT_COMMAND = "/usr/bin/git";
+const TASKKILL_COMMAND = "C:\\Windows\\System32\\taskkill.exe";
 const mockSpawn = vi.fn();
 const mockGetGitWorkspaceRoot = vi.fn();
 const mockShowErrorMessage = vi.fn();
@@ -35,8 +37,14 @@ vi.mock("../commands/getGitWorkspaceRoot", () => ({
 // 解決失敗 (null) のフォールバック挙動を検証することもできる。
 // 絶対パス解決ロジック自体は `resolveExecutablePath.test.ts` で別途検証する。
 const mockResolveSpawnCommand = vi.fn();
+const mockResolveNativeExecutableOnPath = vi.fn();
+const mockResolveWindowsSystemExecutable = vi.fn();
 vi.mock("../commands/resolveExecutablePath", () => ({
+	resolveNativeExecutableOnPath: (...args: unknown[]) =>
+		mockResolveNativeExecutableOnPath(...args),
 	resolveSpawnCommand: (...args: unknown[]) => mockResolveSpawnCommand(...args),
+	resolveWindowsSystemExecutable: (...args: unknown[]) =>
+		mockResolveWindowsSystemExecutable(...args),
 }));
 
 vi.mock("vscode", () => ({
@@ -101,6 +109,8 @@ describe("getRecentCommits", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockGetGitWorkspaceRoot.mockReturnValue("/test/workspace");
+		mockResolveNativeExecutableOnPath.mockReturnValue(GIT_COMMAND);
+		mockResolveWindowsSystemExecutable.mockReturnValue(TASKKILL_COMMAND);
 	});
 
 	it("should parse git log output correctly", () => {
@@ -137,6 +147,13 @@ describe("getRecentCommits", () => {
 		);
 	});
 
+	it("should throw ENOENT before git log when safe git executable cannot be resolved", () => {
+		mockResolveNativeExecutableOnPath.mockReturnValue(null);
+
+		expect(() => getRecentCommits("/workspace")).toThrow("spawn git ENOENT");
+		expect(mockExecFileSync).not.toHaveBeenCalled();
+	});
+
 	it("should return empty array when repository has no commits yet", () => {
 		mockExecFileSync
 			.mockImplementationOnce(() => {
@@ -151,7 +168,7 @@ describe("getRecentCommits", () => {
 		expect(commits).toEqual([]);
 		expect(mockExecFileSync).toHaveBeenNthCalledWith(
 			1,
-			"git",
+			GIT_COMMAND,
 			[
 				"-C",
 				"/workspace",
@@ -164,7 +181,7 @@ describe("getRecentCommits", () => {
 		);
 		expect(mockExecFileSync).toHaveBeenNthCalledWith(
 			2,
-			"git",
+			GIT_COMMAND,
 			["-C", "/workspace", "rev-list", "--count", "--all"],
 			{ encoding: "utf-8" },
 		);
@@ -184,7 +201,7 @@ describe("getRecentCommits", () => {
 		);
 		expect(mockExecFileSync).toHaveBeenNthCalledWith(
 			1,
-			"git",
+			GIT_COMMAND,
 			[
 				"-C",
 				"/workspace",
@@ -197,7 +214,7 @@ describe("getRecentCommits", () => {
 		);
 		expect(mockExecFileSync).toHaveBeenNthCalledWith(
 			2,
-			"git",
+			GIT_COMMAND,
 			["-C", "/workspace", "rev-list", "--count", "--all"],
 			{ encoding: "utf-8" },
 		);
@@ -216,7 +233,7 @@ describe("getRecentCommits", () => {
 		getRecentCommits("/workspace", 5);
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
-			"git",
+			GIT_COMMAND,
 			[
 				"-C",
 				"/workspace",
@@ -235,7 +252,7 @@ describe("getRecentCommits", () => {
 		getRecentCommits("/workspace");
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
-			"git",
+			GIT_COMMAND,
 			[
 				"-C",
 				"/workspace",
@@ -254,7 +271,7 @@ describe("getRecentCommits", () => {
 		getRecentCommits("/workspace", 0);
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
-			"git",
+			GIT_COMMAND,
 			[
 				"-C",
 				"/workspace",
@@ -318,7 +335,7 @@ describe("getRecentCommits", () => {
 		getRecentCommits("/workspace", -5);
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
-			"git",
+			GIT_COMMAND,
 			[
 				"-C",
 				"/workspace",
@@ -337,7 +354,7 @@ describe("getRecentCommits", () => {
 		getRecentCommits("/workspace", 3.5);
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
-			"git",
+			GIT_COMMAND,
 			[
 				"-C",
 				"/workspace",
@@ -356,7 +373,7 @@ describe("getRecentCommits", () => {
 		getRecentCommits("/workspace", Number.NaN);
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
-			"git",
+			GIT_COMMAND,
 			[
 				"-C",
 				"/workspace",
@@ -389,7 +406,7 @@ describe("getRecentCommits", () => {
 		getRecentCommits("/workspace", 5);
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
-			"git",
+			GIT_COMMAND,
 			[
 				"-C",
 				"/workspace",
@@ -482,7 +499,7 @@ describe("getRecentCommits", () => {
 		getRecentCommits("/workspace", Number.POSITIVE_INFINITY);
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
-			"git",
+			GIT_COMMAND,
 			[
 				"-C",
 				"/workspace",
@@ -521,6 +538,8 @@ describe("rewordCommit", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockGetGitWorkspaceRoot.mockReturnValue("/test/workspace");
+		mockResolveNativeExecutableOnPath.mockReturnValue(GIT_COMMAND);
+		mockResolveWindowsSystemExecutable.mockReturnValue(TASKKILL_COMMAND);
 		// resolveSpawnCommand の既定挙動をこのテスト専用の固定値に戻す
 		mockResolveSpawnCommand.mockImplementation((name: string) => ({
 			command: name,
@@ -1145,7 +1164,7 @@ describe("rewordCommit", () => {
 
 		// git log コマンドの -n 引数が 15 であり、`-C` 引数で作業ディレクトリが指定されていることを検証
 		expect(mockExecFileSync).toHaveBeenCalledWith(
-			"git",
+			GIT_COMMAND,
 			[
 				"-C",
 				"/test/workspace",
@@ -1840,7 +1859,7 @@ describe("rewordCommit", () => {
 			await progressPromise;
 
 			expect(mockSpawn).toHaveBeenCalledWith(
-				"taskkill",
+				TASKKILL_COMMAND,
 				["/PID", "5151", "/T", "/F"],
 				expect.objectContaining({ stdio: "ignore", windowsHide: true }),
 			);

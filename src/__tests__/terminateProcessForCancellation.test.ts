@@ -3,9 +3,19 @@ import { EventEmitter } from "node:events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockSpawn = vi.fn();
+const TASKKILL_COMMAND = "C:\\Windows\\System32\\taskkill.exe";
+const mockResolveNativeExecutableOnPath = vi.fn();
+const mockResolveWindowsSystemExecutable = vi.fn();
 
 vi.mock("child_process", () => ({
 	spawn: (...args: unknown[]) => mockSpawn(...args),
+}));
+
+vi.mock("../commands/resolveExecutablePath", () => ({
+	resolveNativeExecutableOnPath: (...args: unknown[]) =>
+		mockResolveNativeExecutableOnPath(...args),
+	resolveWindowsSystemExecutable: (...args: unknown[]) =>
+		mockResolveWindowsSystemExecutable(...args),
 }));
 
 function createMockProcess(): ChildProcess & {
@@ -28,6 +38,8 @@ describe("terminateProcessForCancellation", () => {
 
 	beforeEach(async () => {
 		vi.clearAllMocks();
+		mockResolveWindowsSystemExecutable.mockReturnValue(TASKKILL_COMMAND);
+		mockResolveNativeExecutableOnPath.mockReturnValue(null);
 		outputChannel = { appendLine: vi.fn() };
 		originalPlatform = Object.getOwnPropertyDescriptor(
 			globalThis.process,
@@ -75,12 +87,60 @@ describe("terminateProcessForCancellation", () => {
 			terminateProcessForCancellation(child, outputChannel as never);
 
 			expect(mockSpawn).toHaveBeenCalledWith(
-				"taskkill",
+				TASKKILL_COMMAND,
 				["/PID", "4242", "/T", "/F"],
 				{
 					windowsHide: true,
 					stdio: "ignore",
 				},
+			);
+			expect(child.kill).not.toHaveBeenCalled();
+		} finally {
+			restorePlatform();
+		}
+	});
+
+	it("System32 の taskkill が解決できない場合は安全な PATH 解決結果へフォールバックする", () => {
+		setPlatform("win32");
+		try {
+			const child = createMockProcess();
+			const taskkillProcess = createMockProcess();
+			Object.defineProperty(child, "pid", { value: 4343, configurable: true });
+			mockResolveWindowsSystemExecutable.mockReturnValue(null);
+			mockResolveNativeExecutableOnPath.mockReturnValue(
+				"D:\\Tools\\taskkill.EXE",
+			);
+			mockSpawn.mockReturnValueOnce(taskkillProcess);
+
+			terminateProcessForCancellation(child, outputChannel as never);
+
+			expect(mockSpawn).toHaveBeenCalledWith(
+				"D:\\Tools\\taskkill.EXE",
+				["/PID", "4343", "/T", "/F"],
+				{
+					windowsHide: true,
+					stdio: "ignore",
+				},
+			);
+			expect(child.kill).not.toHaveBeenCalled();
+		} finally {
+			restorePlatform();
+		}
+	});
+
+	it("taskkill を安全に解決できない場合は bare command を起動しない", () => {
+		setPlatform("win32");
+		try {
+			const child = createMockProcess();
+			Object.defineProperty(child, "pid", { value: 4444, configurable: true });
+			mockResolveWindowsSystemExecutable.mockReturnValue(null);
+			mockResolveNativeExecutableOnPath.mockReturnValue(null);
+
+			terminateProcessForCancellation(child, outputChannel as never);
+
+			expect(mockSpawn).not.toHaveBeenCalled();
+			expect(outputChannel.appendLine).toHaveBeenCalledWith(
+				"\n⚠️ Failed to resolve taskkill executable for cancellation",
 			);
 			expect(child.kill).not.toHaveBeenCalled();
 		} finally {
@@ -101,6 +161,26 @@ describe("terminateProcessForCancellation", () => {
 
 			expect(outputChannel.appendLine).toHaveBeenCalledWith(
 				"\n⚠️ Failed to start taskkill: spawn taskkill ENOENT",
+			);
+			expect(child.kill).not.toHaveBeenCalled();
+		} finally {
+			restorePlatform();
+		}
+	});
+
+	it("taskkill の非 0 終了を outputChannel に記録する", () => {
+		setPlatform("win32");
+		try {
+			const child = createMockProcess();
+			const taskkillProcess = createMockProcess();
+			Object.defineProperty(child, "pid", { value: 5252, configurable: true });
+			mockSpawn.mockReturnValueOnce(taskkillProcess);
+
+			terminateProcessForCancellation(child, outputChannel as never);
+			taskkillProcess.__emit("close", 1);
+
+			expect(outputChannel.appendLine).toHaveBeenCalledWith(
+				"\n⚠️ taskkill exited with code 1",
 			);
 			expect(child.kill).not.toHaveBeenCalled();
 		} finally {
