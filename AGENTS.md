@@ -176,6 +176,9 @@ src/
 - Fixed `isCommandNotFoundError` で POSIX 終了コード 127 を単独で「未検出」と判定していた誤判定を修正。本拡張は POSIX で `shell: false` で git-sc を spawn するため、`close` で来る 127 は git-sc 自身の終了コード。 9009 (Windows cmd.exe) のみを exit code で判定し、127 はメッセージパターン一致時のみ未検出扱いとする。
 - Wrapped `vscode.commands.executeCommand("git.refresh")` calls with `Promise.resolve(...).catch(...)` in both `runGitSc` and `rewordCommit` so that Git 拡張が無効化されている環境で発生する reject が未処理 rejection にならず、`OutputChannel` に警告として記録される。
 - Added regression tests for: `resolveSpawnCommand` 解決失敗時の早期フォールバック (`spawn` を呼ばずインストール案内)、`git.refresh` reject 時の `OutputChannel` 記録、`resolveExecutableOnPath` の PATH 相対要素除外、`PATHEXT` 既定値、絶対パス検出、空 PATH ハンドリングなど。
+- Biome updated to 2.4.14.
+- Fixed `resolveExecutableOnPath` で `PATHEXT` が空文字列・空白のみ・セパレータのみ (`";"` や `" ; ; "`) の場合に `pathExts` が空配列になり、Windows で `.EXE` / `.CMD` / `.BAT` / `.COM` の探索が一切走らず誤って未検出扱いになるバグを修正。`??` で素通ししていた箇所をデフォルト `.EXE;.CMD;.BAT;.COM` へフォールバックするロジックに置き換えた。
+- Added regression tests for `PATHEXT=""` / `"   "` / `" ; ; "` の各エッジケースでデフォルト拡張子へフォールバックして探索が走ることを検証。
 
 ## VS Code Extension Details
 

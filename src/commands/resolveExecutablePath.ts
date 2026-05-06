@@ -68,16 +68,19 @@ export function resolveExecutableOnPath(name: string): string | null {
 	const pathDelimiter = isWindows ? ";" : ":";
 
 	const pathDirs = getPathEnvValue().split(pathDelimiter);
-	// PATHEXT が空文字列・空白のみの場合は未設定と同じくデフォルトへフォールバックする。
-	// 空文字列を `??` で素通しすると `pathExts` が空配列になり、
+	// PATHEXT が空文字列・空白のみ・セパレータのみ (";" や " ; ; ") の場合は
+	// 未設定と同じくデフォルトへフォールバックする。
+	// `??` だけでは空文字列を素通しし `pathExts` が空配列になり、
 	// Windows で `.EXE` / `.CMD` / `.BAT` / `.COM` の探索が一切走らず誤って未検出扱いになる。
-	const rawPathExt = globalThis.process.env.PATHEXT;
-	const pathExtSource =
-		rawPathExt && rawPathExt.trim() !== "" ? rawPathExt : ".EXE;.CMD;.BAT;.COM";
-	const pathExts = pathExtSource
+	const DEFAULT_PATH_EXT = ".EXE;.CMD;.BAT;.COM";
+	const rawPathExt = globalThis.process.env.PATHEXT ?? DEFAULT_PATH_EXT;
+	let pathExts = rawPathExt
 		.split(";")
 		.map((ext) => ext.trim())
 		.filter(Boolean);
+	if (pathExts.length === 0) {
+		pathExts = DEFAULT_PATH_EXT.split(";");
+	}
 
 	for (const rawDir of pathDirs) {
 		const dir = isWindows ? rawDir.trim() : rawDir;

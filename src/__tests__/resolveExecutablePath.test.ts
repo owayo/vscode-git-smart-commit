@@ -262,6 +262,56 @@ describe("resolveExecutableOnPath", () => {
 		expect(result).toBe("C:\\tools\\git-sc.BAT");
 	});
 
+	it("PATHEXT が空文字列でもデフォルト拡張子で探索する", () => {
+		// PATHEXT="" を `??` で素通しすると pathExts が空配列になり .CMD/.EXE などを
+		// 一切探索できなくなるため、未設定と同等にデフォルトへフォールバックすること
+		setPlatform("win32");
+		globalThis.process.env.PATH = "C:\\tools";
+		globalThis.process.env.PATHEXT = "";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\tools\\git-sc.CMD") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		const result = resolveExecutableOnPath("git-sc");
+		expect(result).toBe("C:\\tools\\git-sc.CMD");
+	});
+
+	it("PATHEXT が空白のみでもデフォルト拡張子で探索する", () => {
+		// 空白のみの PATHEXT も実質「未設定」と同義として扱う
+		setPlatform("win32");
+		globalThis.process.env.PATH = "C:\\tools";
+		globalThis.process.env.PATHEXT = "   ";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\tools\\git-sc.EXE") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		const result = resolveExecutableOnPath("git-sc");
+		expect(result).toBe("C:\\tools\\git-sc.EXE");
+	});
+
+	it("PATHEXT がセパレータのみでもデフォルト拡張子で探索する", () => {
+		// `;` や ` ; ; ` のように区切り文字だけの PATHEXT も `filter(Boolean)` で
+		// pathExts が空配列になるためデフォルトへフォールバックする
+		setPlatform("win32");
+		globalThis.process.env.PATH = "C:\\tools";
+		globalThis.process.env.PATHEXT = " ; ; ";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\tools\\git-sc.BAT") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		const result = resolveExecutableOnPath("git-sc");
+		expect(result).toBe("C:\\tools\\git-sc.BAT");
+	});
+
 	it("returns the direct (extensionless) path when name already includes extension", () => {
 		setPlatform("win32");
 		globalThis.process.env.PATH = "C:\\tools";
