@@ -168,7 +168,7 @@ pnpm run format
 pnpm run test
 ```
 
-ユニットテストには、`extension.ts` で登録される各コマンドハンドラのオプション引き渡し、内部コマンド失敗時の例外抑止、キャンセル時の POSIX `SIGTERM` と Windows `taskkill` 分岐、`PATH` の空要素・相対要素・同名ディレクトリを除外する実行ファイル解決、安全な native `git` 解決、`taskkill` の絶対パス解決と失敗ログに関する回帰ケースも含まれます。
+ユニットテストには、`extension.ts` で登録される各コマンドハンドラのオプション引き渡し、内部コマンド失敗時の例外抑止、キャンセル時の POSIX `SIGTERM` と Windows `taskkill` 分岐、`PATH` の空要素・相対要素・同名ディレクトリを除外する実行ファイル解決、Windows の `Path` 環境変数フォールバック、安全な native `git` 解決、`taskkill` の絶対パス解決と `WINDIR` フォールバック、失敗ログに関する回帰ケースも含まれます。
 
 ### デバッグ
 

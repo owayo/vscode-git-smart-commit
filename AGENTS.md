@@ -72,6 +72,9 @@ src/
 
 ## Recent Maintenance Notes
 
+- @types/node updated to 25.6.2.
+- ovsx updated to 0.10.12.
+- Added regression tests for Windows `Path` environment fallback during PATH lookup and `WINDIR` fallback during System32 command resolution.
 - Hardened executable resolution to require a regular file, so executable directories or same-name directories on PATH are no longer treated as valid `git-sc` / `git` candidates.
 - Git CLI calls now resolve `git` to a safe native absolute executable path before `execFileSync`, while still passing repository location via `-C <dir>`.
 - Windows cancellation now resolves `taskkill` via `SystemRoot\\System32\\taskkill.exe` or safe native PATH lookup before spawn, avoiding bare command execution; non-zero `taskkill` exits are logged to the output channel.

@@ -23,6 +23,7 @@ function mockFileStat(isFile: boolean): Stats {
 describe("resolveExecutableOnPath", () => {
 	let originalPlatform: PropertyDescriptor | undefined;
 	let originalPath: string | undefined;
+	let originalTitlePath: string | undefined;
 	let originalPathExt: string | undefined;
 	let originalSystemRoot: string | undefined;
 	let originalWindir: string | undefined;
@@ -35,6 +36,7 @@ describe("resolveExecutableOnPath", () => {
 			"platform",
 		);
 		originalPath = globalThis.process.env.PATH;
+		originalTitlePath = globalThis.process.env.Path;
 		originalPathExt = globalThis.process.env.PATHEXT;
 		originalSystemRoot = globalThis.process.env.SystemRoot;
 		originalWindir = globalThis.process.env.WINDIR;
@@ -48,6 +50,11 @@ describe("resolveExecutableOnPath", () => {
 			delete globalThis.process.env.PATH;
 		} else {
 			globalThis.process.env.PATH = originalPath;
+		}
+		if (originalTitlePath === undefined) {
+			delete globalThis.process.env.Path;
+		} else {
+			globalThis.process.env.Path = originalTitlePath;
 		}
 		if (originalPathExt === undefined) {
 			delete globalThis.process.env.PATHEXT;
@@ -148,6 +155,22 @@ describe("resolveExecutableOnPath", () => {
 
 		const result = resolveExecutableOnPath("git-sc");
 		expect(result).toBe("C:\\Program Files\\Git\\cmd\\git-sc.CMD");
+	});
+
+	it("Windows では PATH が未定義でも Path から探索する", () => {
+		setPlatform("win32");
+		delete globalThis.process.env.PATH;
+		globalThis.process.env.Path = "C:\\tools";
+		globalThis.process.env.PATHEXT = ".EXE";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\tools\\git-sc.EXE") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		const result = resolveExecutableOnPath("git-sc");
+		expect(result).toBe("C:\\tools\\git-sc.EXE");
 	});
 
 	it("skips empty PATH entries to defend against cwd-only PATH = ';C:\\\\Tools'", () => {
@@ -372,6 +395,22 @@ describe("resolveExecutableOnPath", () => {
 	it("Windows の System32 実行ファイルを SystemRoot から絶対パスで解決する", () => {
 		setPlatform("win32");
 		globalThis.process.env.SystemRoot = "C:\\Windows";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\Windows\\System32\\taskkill.exe") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		expect(resolveWindowsSystemExecutable("taskkill")).toBe(
+			"C:\\Windows\\System32\\taskkill.exe",
+		);
+	});
+
+	it("Windows の System32 実行ファイルを WINDIR から絶対パスで解決する", () => {
+		setPlatform("win32");
+		delete globalThis.process.env.SystemRoot;
+		globalThis.process.env.WINDIR = "C:\\Windows";
 		mockStatSync.mockImplementation((p: unknown) => {
 			if (p === "C:\\Windows\\System32\\taskkill.exe") {
 				return mockFileStat(true);
