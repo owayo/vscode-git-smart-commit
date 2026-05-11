@@ -72,6 +72,9 @@ src/
 
 ## Recent Maintenance Notes
 
+- Biome updated to 2.4.15.
+- Fixed `resolveNativeExecutableOnPath` so directly specified `.cmd` / `.bat` names are not returned as native Windows executables; native resolution now honors its `.exe` / `.com` contract even when the caller supplies an extension.
+- Added regression test for directly specified `.CMD` names in Windows native executable resolution.
 - @types/node updated to 25.6.2.
 - ovsx updated to 0.10.12.
 - Added regression tests for Windows `Path` environment fallback during PATH lookup and `WINDIR` fallback during System32 command resolution.

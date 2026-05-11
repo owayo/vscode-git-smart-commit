@@ -130,6 +130,13 @@ export function resolveNativeExecutableOnPath(name: string): string | null {
 
 	const pathDirs = getPathEnvValue().split(";");
 	const directExtension = path.win32.extname(name);
+	if (
+		directExtension &&
+		![".exe", ".com"].includes(directExtension.toLowerCase())
+	) {
+		// native 実行ファイルとして直接起動できない .cmd/.bat 等は返さない。
+		return null;
+	}
 	const candidateNames = directExtension
 		? [name]
 		: [`${name}.EXE`, `${name}.COM`];

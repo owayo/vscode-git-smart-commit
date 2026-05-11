@@ -392,6 +392,19 @@ describe("resolveExecutableOnPath", () => {
 		expect(resolveNativeExecutableOnPath("git")).toBeNull();
 	});
 
+	it("Windows の native 実行ファイル解決では直接指定された .CMD を返さない", () => {
+		setPlatform("win32");
+		globalThis.process.env.PATH = "C:\\tools";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\tools\\git.CMD") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		expect(resolveNativeExecutableOnPath("git.CMD")).toBeNull();
+	});
+
 	it("Windows の System32 実行ファイルを SystemRoot から絶対パスで解決する", () => {
 		setPlatform("win32");
 		globalThis.process.env.SystemRoot = "C:\\Windows";
