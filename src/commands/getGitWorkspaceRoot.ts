@@ -35,6 +35,7 @@ export function getGitWorkspaceRoot(
 			// git 実行ファイルは絶対パスで起動し、対象リポジトリは `-C <dir>` で渡す。
 			// bare command や `cwd` 指定に依存すると、Windows の実行ファイル探索順により
 			// カレントディレクトリ配下の偽 `git.exe` を拾う余地があるため避ける。
+			// Git が末尾に付ける行終端だけを除去し、実在パス末尾の空白は保持する。
 			const workspaceRoot = execFileSync(
 				gitCommand,
 				["-C", folder.uri.fsPath, "rev-parse", "--show-toplevel"],
@@ -43,7 +44,7 @@ export function getGitWorkspaceRoot(
 					stdio: ["ignore", "pipe", "pipe"],
 					env: getGitEnglishEnv(),
 				},
-			).trim();
+			).replace(/\r?\n$/, "");
 
 			if (workspaceRoot.length > 0) {
 				return workspaceRoot;

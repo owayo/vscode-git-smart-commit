@@ -62,7 +62,7 @@ src/
 
 - Commands are registered in `activate()` and added to `context.subscriptions`
 - External process execution uses `child_process.spawn`. POSIX environments use `shell: false` so `process.kill("SIGTERM")` reaches the real `git-sc` child directly. `git-sc` is resolved to an absolute path via `resolveSpawnCommand` before spawn; PATH scanning allows only absolute entries and excludes empty entries, `.`, and relative paths so cwd ハイジャック (悪意ある repo 直下の `git-sc` / `git-sc.cmd` 優先実行) を防ぐ。Windows では `.EXE`/`.CMD`/`.BAT` 等を探索し、`.cmd`/`.bat` の場合のみ Node.js CVE-2024-27980 対策で `shell: true` を併用する。その際はキャンセル時に `SystemRoot\\System32\\taskkill.exe` または安全に解決した native `taskkill` を絶対パスで起動し、`/PID <pid> /T /F` でプロセスツリーごと終了させる。PATH 上に安全な絶対パスが見つからない場合は spawn せずインストール案内へフォールバックする。
-- Git CLI 呼び出しは `resolveNativeExecutableOnPath("git")` で `.exe`/`.com` 等の native 実行ファイルを絶対パスに解決してから `execFileSync(<gitPath>, ["-C", <dir>, ...])` で実行する。bare command と `cwd: <dir>` を使わないことで、Windows の `CreateProcess` がカレントディレクトリを実行ファイル探索パスに含める cwd ハイジャックを回避する。
+- Git CLI 呼び出しは `resolveNativeExecutableOnPath("git")` で `.exe`/`.com` 等の native 実行ファイルを絶対パスに解決してから `execFileSync(<gitPath>, ["-C", <dir>, ...])` で実行する。bare command と `cwd: <dir>` を使わないことで、Windows の `CreateProcess` がカレントディレクトリを実行ファイル探索パスに含める cwd ハイジャックを回避する。`git rev-parse --show-toplevel` の出力は Git が付与する末尾改行だけを除去し、実在するリポジトリパス末尾の空白は保持する。
 - Commands resolve the first reachable Git repository root across open workspace folders before running `git-sc` or `git log`
 - Output is displayed via VS Code `OutputChannel`
 - Progress is shown via `vscode.window.withProgress`
@@ -73,6 +73,8 @@ src/
 ## Recent Maintenance Notes
 
 - Biome updated to 2.4.15.
+- Fixed `getGitWorkspaceRoot` so Git root paths ending with spaces are preserved; only the line terminator appended by `git rev-parse --show-toplevel` is removed.
+- Added regression test for Git workspace roots with trailing spaces.
 - Fixed `resolveNativeExecutableOnPath` so directly specified `.cmd` / `.bat` names are not returned as native Windows executables; native resolution now honors its `.exe` / `.com` contract even when the caller supplies an extension.
 - Added regression test for directly specified `.CMD` names in Windows native executable resolution.
 - @types/node updated to 25.6.2.
