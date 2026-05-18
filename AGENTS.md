@@ -72,6 +72,9 @@ src/
 
 ## Recent Maintenance Notes
 
+- Vitest updated to 4.1.6.
+- Added `pnpm.overrides` for patched dev-only transitive dependencies so `pnpm audit --audit-level moderate` reports no known vulnerabilities.
+- Added regression tests for lowercase Windows `path` environment fallback during PATH lookup and lowercase `systemroot` fallback during System32 command resolution.
 - Biome updated to 2.4.15.
 - Fixed `getGitWorkspaceRoot` so Git root paths ending with spaces are preserved; only the line terminator appended by `git rev-parse --show-toplevel` is removed.
 - Added regression test for Git workspace roots with trailing spaces.

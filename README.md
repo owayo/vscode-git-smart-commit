@@ -166,9 +166,14 @@ pnpm run format
 
 # テスト
 pnpm run test
+
+# 依存脆弱性チェック
+pnpm audit --audit-level moderate
 ```
 
-ユニットテストには、`extension.ts` で登録される各コマンドハンドラのオプション引き渡し、内部コマンド失敗時の例外抑止、キャンセル時の POSIX `SIGTERM` と Windows `taskkill` 分岐、`PATH` の空要素・相対要素・同名ディレクトリを除外する実行ファイル解決、Windows の `Path` 環境変数フォールバック、安全な native `git` 解決、直接指定された `.CMD` を native 実行ファイルとして返さない境界値、`taskkill` の絶対パス解決と `WINDIR` フォールバック、Git ルートパス末尾の空白保持、失敗ログに関する回帰ケースも含まれます。
+dev 依存の推移依存には `package.json` の `pnpm.overrides` でパッチ済みバージョンを明示し、`pnpm audit --audit-level moderate` が通る状態を維持します。
+
+ユニットテストには、`extension.ts` で登録される各コマンドハンドラのオプション引き渡し、内部コマンド失敗時の例外抑止、キャンセル時の POSIX `SIGTERM` と Windows `taskkill` 分岐、`PATH` の空要素・相対要素・同名ディレクトリを除外する実行ファイル解決、Windows の `Path` / 小文字 `path` 環境変数フォールバック、安全な native `git` 解決、直接指定された `.CMD` を native 実行ファイルとして返さない境界値、`taskkill` の絶対パス解決と `WINDIR` / 小文字 `systemroot` フォールバック、Git ルートパス末尾の空白保持、失敗ログに関する回帰ケースも含まれます。
 
 ### デバッグ
 

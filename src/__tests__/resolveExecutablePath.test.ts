@@ -24,9 +24,12 @@ describe("resolveExecutableOnPath", () => {
 	let originalPlatform: PropertyDescriptor | undefined;
 	let originalPath: string | undefined;
 	let originalTitlePath: string | undefined;
+	let originalLowerPath: string | undefined;
 	let originalPathExt: string | undefined;
 	let originalSystemRoot: string | undefined;
+	let originalLowerSystemRoot: string | undefined;
 	let originalWindir: string | undefined;
+	let originalLowerWindir: string | undefined;
 
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -37,9 +40,12 @@ describe("resolveExecutableOnPath", () => {
 		);
 		originalPath = globalThis.process.env.PATH;
 		originalTitlePath = globalThis.process.env.Path;
+		originalLowerPath = globalThis.process.env.path;
 		originalPathExt = globalThis.process.env.PATHEXT;
 		originalSystemRoot = globalThis.process.env.SystemRoot;
+		originalLowerSystemRoot = globalThis.process.env.systemroot;
 		originalWindir = globalThis.process.env.WINDIR;
+		originalLowerWindir = globalThis.process.env.windir;
 	});
 
 	afterEach(() => {
@@ -56,6 +62,11 @@ describe("resolveExecutableOnPath", () => {
 		} else {
 			globalThis.process.env.Path = originalTitlePath;
 		}
+		if (originalLowerPath === undefined) {
+			delete globalThis.process.env.path;
+		} else {
+			globalThis.process.env.path = originalLowerPath;
+		}
 		if (originalPathExt === undefined) {
 			delete globalThis.process.env.PATHEXT;
 		} else {
@@ -66,10 +77,20 @@ describe("resolveExecutableOnPath", () => {
 		} else {
 			globalThis.process.env.SystemRoot = originalSystemRoot;
 		}
+		if (originalLowerSystemRoot === undefined) {
+			delete globalThis.process.env.systemroot;
+		} else {
+			globalThis.process.env.systemroot = originalLowerSystemRoot;
+		}
 		if (originalWindir === undefined) {
 			delete globalThis.process.env.WINDIR;
 		} else {
 			globalThis.process.env.WINDIR = originalWindir;
+		}
+		if (originalLowerWindir === undefined) {
+			delete globalThis.process.env.windir;
+		} else {
+			globalThis.process.env.windir = originalLowerWindir;
 		}
 	});
 
@@ -161,6 +182,23 @@ describe("resolveExecutableOnPath", () => {
 		setPlatform("win32");
 		delete globalThis.process.env.PATH;
 		globalThis.process.env.Path = "C:\\tools";
+		globalThis.process.env.PATHEXT = ".EXE";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\tools\\git-sc.EXE") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		const result = resolveExecutableOnPath("git-sc");
+		expect(result).toBe("C:\\tools\\git-sc.EXE");
+	});
+
+	it("Windows では PATH/Path が未定義でも小文字 path から探索する", () => {
+		setPlatform("win32");
+		delete globalThis.process.env.PATH;
+		delete globalThis.process.env.Path;
+		globalThis.process.env.path = "C:\\tools";
 		globalThis.process.env.PATHEXT = ".EXE";
 		mockStatSync.mockImplementation((p: unknown) => {
 			if (p === "C:\\tools\\git-sc.EXE") {
@@ -424,6 +462,23 @@ describe("resolveExecutableOnPath", () => {
 		setPlatform("win32");
 		delete globalThis.process.env.SystemRoot;
 		globalThis.process.env.WINDIR = "C:\\Windows";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\Windows\\System32\\taskkill.exe") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		expect(resolveWindowsSystemExecutable("taskkill")).toBe(
+			"C:\\Windows\\System32\\taskkill.exe",
+		);
+	});
+
+	it("Windows の System32 実行ファイルを小文字 systemroot から絶対パスで解決する", () => {
+		setPlatform("win32");
+		delete globalThis.process.env.SystemRoot;
+		delete globalThis.process.env.WINDIR;
+		globalThis.process.env.systemroot = "C:\\Windows";
 		mockStatSync.mockImplementation((p: unknown) => {
 			if (p === "C:\\Windows\\System32\\taskkill.exe") {
 				return mockFileStat(true);
