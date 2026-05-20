@@ -183,7 +183,7 @@ export async function runGitSc(
 							stderr || stdout || `Process exited with code ${code}`;
 						outputChannel.appendLine(`\n❌ git-sc failed with code ${code}`);
 
-						if (isCommandNotFoundError(code, errorMessage)) {
+						if (isCommandNotFoundError(errorMessage)) {
 							showGitScNotFoundMessage();
 						} else {
 							vscode.window.showErrorMessage(

@@ -190,6 +190,12 @@ src/
 - Biome updated to 2.4.14.
 - Fixed `resolveExecutableOnPath` で `PATHEXT` が空文字列・空白のみ・セパレータのみ (`";"` や `" ; ; "`) の場合に `pathExts` が空配列になり、Windows で `.EXE` / `.CMD` / `.BAT` / `.COM` の探索が一切走らず誤って未検出扱いになるバグを修正。`??` で素通ししていた箇所をデフォルト `.EXE;.CMD;.BAT;.COM` へフォールバックするロジックに置き換えた。
 - Added regression tests for `PATHEXT=""` / `"   "` / `" ; ; "` の各エッジケースでデフォルト拡張子へフォールバックして探索が走ることを検証。
+- Fixed `isCommandNotFoundError` で Windows 終了コード 9009 を単独で「未検出」と判定していた誤判定を解消。本拡張は spawn 前に `resolveSpawnCommand` で git-sc を絶対パスに解決し、解決失敗時はそもそも spawn しないため、起動済みプロセスから返る 9009 は git-sc 自身もしくは内部依存コマンド (例: `git-sc.cmd` 内部の `node`) の異常終了として扱う必要がある。これに合わせて signature を `isCommandNotFoundError(errorMessage: string)` に簡素化し、判定はメッセージパターン一致のみで行うよう統一した。
+- Extended Windows command-not-found patterns に `git-sc.cmd` / `git-sc.bat` / `git-sc.exe` の拡張子付き報告を許容するよう正規表現を更新。cmd.exe や PowerShell が拡張子付きで「is not recognized」メッセージを返した場合でも未検出を検知できる。
+- Updated `runGitSc` / `rewordCommit` の `isCommandNotFoundError` 呼び出しを新 signature (`errorMessage` のみ) に追随。終了コード単独判定の経路は撤去された。
+- Added regression tests covering the new `.cmd`/`.bat`/`.exe` 拡張子報告 patterns, and removed obsolete exit-code-only tests that no longer reflect the real spawn pre-resolution behavior.
+- Added regression tests for `terminateProcessForCancellation` covering Windows での `child.pid === undefined` 時の SIGTERM フォールバック、`taskkill` の正常終了 (code 0) での warning 非出力、`taskkill` の `close` で code が `null` (シグナルキル) になるケースの warning 出力。
+- @types/node updated to 25.7.0 (lockfile installs 25.9.1 within the caret range).
 
 ## VS Code Extension Details
 

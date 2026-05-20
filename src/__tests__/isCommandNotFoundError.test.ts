@@ -2,115 +2,98 @@ import { describe, expect, it } from "vitest";
 import { isCommandNotFoundError } from "../commands/isCommandNotFoundError";
 
 describe("isCommandNotFoundError", () => {
-	it("returns false for POSIX exit code 127 without matching message", () => {
-		// 本拡張は POSIX で `shell: false` で git-sc を spawn するため、
-		// `close` で来る 127 は git-sc 自身の終了コードとして扱う（未検出ではない）
-		expect(isCommandNotFoundError(127, "any error")).toBe(false);
-	});
-
-	it("returns true for Windows command-not-found exit code", () => {
-		expect(isCommandNotFoundError(9009, "any error")).toBe(true);
+	it("returns false for unrelated error messages even on exit-code 127 / 9009 scenarios", () => {
+		// 本拡張は spawn 前に resolveSpawnCommand で絶対パス解決済みのため、
+		// 起動済みプロセスが返す終了コード (POSIX 127 / Windows 9009) は
+		// git-sc 自身もしくは内部依存の異常終了とみなす。
+		// 未検出判定はメッセージ側のパターン一致時のみ行う。
+		expect(isCommandNotFoundError("any error")).toBe(false);
 	});
 
 	it("returns true for POSIX shell command-not-found message", () => {
-		expect(
-			isCommandNotFoundError(1, "/bin/sh: git-sc: command not found"),
-		).toBe(true);
-		expect(isCommandNotFoundError(1, "zsh: command not found: git-sc")).toBe(
+		expect(isCommandNotFoundError("/bin/sh: git-sc: command not found")).toBe(
 			true,
 		);
+		expect(isCommandNotFoundError("zsh: command not found: git-sc")).toBe(true);
 	});
 
 	it("returns true for Windows command-not-found message", () => {
 		expect(
 			isCommandNotFoundError(
-				1,
 				"'git-sc' is not recognized as an internal or external command",
 			),
 		).toBe(true);
 		expect(
 			isCommandNotFoundError(
-				1,
 				"The term 'git-sc' is not recognized as the name of a cmdlet",
 			),
 		).toBe(true);
 	});
 
-	it("returns false for unrelated not-found errors", () => {
-		expect(isCommandNotFoundError(1, "config file not found")).toBe(false);
+	it("returns true for Windows message with .cmd / .bat / .exe extensions", () => {
+		// cmd.exe / PowerShell は拡張子付きで報告することがある
 		expect(
-			isCommandNotFoundError(1, "failed to load git-sc config: file not found"),
+			isCommandNotFoundError(
+				"'git-sc.cmd' is not recognized as an internal or external command",
+			),
+		).toBe(true);
+		expect(
+			isCommandNotFoundError(
+				"'git-sc.bat' is not recognized as an internal or external command",
+			),
+		).toBe(true);
+		expect(
+			isCommandNotFoundError(
+				"The term 'git-sc.exe' is not recognized as the name of a cmdlet",
+			),
+		).toBe(true);
+	});
+
+	it("returns false for unrelated not-found errors", () => {
+		expect(isCommandNotFoundError("config file not found")).toBe(false);
+		expect(
+			isCommandNotFoundError("failed to load git-sc config: file not found"),
 		).toBe(false);
 	});
 
-	it("returns false for null exit code with unrelated error", () => {
-		expect(isCommandNotFoundError(null, "some error")).toBe(false);
-	});
-
-	it("returns true for null exit code with command-not-found message", () => {
-		expect(isCommandNotFoundError(null, "zsh: command not found: git-sc")).toBe(
-			true,
-		);
-	});
-
-	it("returns false for normal exit codes that are not command-not-found", () => {
-		expect(isCommandNotFoundError(0, "")).toBe(false);
-		expect(isCommandNotFoundError(1, "generic error")).toBe(false);
-		expect(isCommandNotFoundError(2, "fatal: bad revision")).toBe(false);
+	it("returns false for normal error messages", () => {
+		expect(isCommandNotFoundError("")).toBe(false);
+		expect(isCommandNotFoundError("generic error")).toBe(false);
+		expect(isCommandNotFoundError("fatal: bad revision")).toBe(false);
 	});
 
 	it("matches case-insensitively for error messages", () => {
 		expect(
 			isCommandNotFoundError(
-				1,
 				"'GIT-SC' IS NOT RECOGNIZED AS AN INTERNAL OR EXTERNAL COMMAND",
 			),
 		).toBe(true);
 		expect(
 			isCommandNotFoundError(
-				1,
 				"THE TERM 'git-sc' IS NOT RECOGNIZED AS THE NAME OF A CMDLET",
 			),
 		).toBe(true);
 	});
 
 	it("returns true for bash-style not found message", () => {
-		expect(isCommandNotFoundError(1, "bash: git-sc: command not found")).toBe(
+		expect(isCommandNotFoundError("bash: git-sc: command not found")).toBe(
 			true,
 		);
 	});
 
 	it("returns true for shell not-found message without 'command' prefix", () => {
-		expect(isCommandNotFoundError(127, "git-sc: not found")).toBe(true);
+		expect(isCommandNotFoundError("git-sc: not found")).toBe(true);
 	});
 
 	it("returns true for PowerShell message without article 'a'", () => {
 		expect(
 			isCommandNotFoundError(
-				1,
 				"the term 'git-sc' is not recognized as the name of cmdlet",
 			),
 		).toBe(true);
 	});
 
-	it("returns false for empty error message with non-matching exit code", () => {
-		expect(isCommandNotFoundError(1, "")).toBe(false);
-	});
-
-	it("returns true for exit code 127 with matching message", () => {
-		// POSIX の 127 はそれ自体では未検出と判定しないが、
-		// メッセージ側のパターン一致があれば未検出として扱える
-		expect(isCommandNotFoundError(127, "bash: git-sc: command not found")).toBe(
-			true,
-		);
-	});
-
-	it("returns false for exit code 127 with empty error message", () => {
-		// POSIX の 127 単体ではメッセージ判定を要求するため、未検出と扱わない
-		expect(isCommandNotFoundError(127, "")).toBe(false);
-	});
-
-	it("returns true for exit code 9009 with empty error message", () => {
-		expect(isCommandNotFoundError(9009, "")).toBe(true);
+	it("returns false for empty error message", () => {
+		expect(isCommandNotFoundError("")).toBe(false);
 	});
 });

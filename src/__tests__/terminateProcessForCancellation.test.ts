@@ -207,4 +207,63 @@ describe("terminateProcessForCancellation", () => {
 			restorePlatform();
 		}
 	});
+
+	it("Windows でも child.pid が未定義の場合は SIGTERM フォールバックを使う", () => {
+		// spawn 直後で pid が割り当てられる前にキャンセルされた等のエッジケース。
+		// taskkill は pid 引数を要求するため、未定義の場合は呼び出さず
+		// ChildProcess.kill による標準終了に委ねる。
+		setPlatform("win32");
+		try {
+			const child = createMockProcess();
+			Object.defineProperty(child, "pid", {
+				value: undefined,
+				configurable: true,
+			});
+
+			terminateProcessForCancellation(child, outputChannel as never);
+
+			expect(mockSpawn).not.toHaveBeenCalled();
+			expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+		} finally {
+			restorePlatform();
+		}
+	});
+
+	it("taskkill が正常終了 (code 0) の場合は警告を出力しない", () => {
+		setPlatform("win32");
+		try {
+			const child = createMockProcess();
+			const taskkillProcess = createMockProcess();
+			Object.defineProperty(child, "pid", { value: 7373, configurable: true });
+			mockSpawn.mockReturnValueOnce(taskkillProcess);
+
+			terminateProcessForCancellation(child, outputChannel as never);
+			taskkillProcess.__emit("close", 0);
+
+			expect(outputChannel.appendLine).not.toHaveBeenCalled();
+			expect(child.kill).not.toHaveBeenCalled();
+		} finally {
+			restorePlatform();
+		}
+	});
+
+	it("taskkill が code null (シグナルキル) で終了した場合も警告を出す", () => {
+		setPlatform("win32");
+		try {
+			const child = createMockProcess();
+			const taskkillProcess = createMockProcess();
+			Object.defineProperty(child, "pid", { value: 8484, configurable: true });
+			mockSpawn.mockReturnValueOnce(taskkillProcess);
+
+			terminateProcessForCancellation(child, outputChannel as never);
+			taskkillProcess.__emit("close", null);
+
+			expect(outputChannel.appendLine).toHaveBeenCalledWith(
+				"\n⚠️ taskkill exited with code null",
+			);
+			expect(child.kill).not.toHaveBeenCalled();
+		} finally {
+			restorePlatform();
+		}
+	});
 });

@@ -326,7 +326,7 @@ async function runGitScReword(
 						const errorMessage =
 							stderr || stdout || `Process exited with code ${code}`;
 						outputChannel.appendLine(`\n❌ Reword failed with code ${code}`);
-						if (isCommandNotFoundError(code, errorMessage)) {
+						if (isCommandNotFoundError(errorMessage)) {
 							showGitScNotFoundMessage();
 						} else {
 							vscode.window.showErrorMessage(
