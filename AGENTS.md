@@ -9,6 +9,7 @@ VS Code extension for running git-sc (AI-powered smart commit message generator)
 - **Build System**: TypeScript compiler (`tsc`)
 - **Test Framework**: Vitest (`vitest run`)
 - **Linter**: Biome (`biome.jsonc`)
+- **pnpm settings**: `pnpm-workspace.yaml` (`overrides` for patched transitive dependencies)
 - **Entry Point**: `src/extension.ts` -> `dist/extension.js`
 
 ## Commands
@@ -61,7 +62,7 @@ src/
 ### Key Patterns
 
 - Commands are registered in `activate()` and added to `context.subscriptions`
-- External process execution uses `child_process.spawn`. POSIX environments use `shell: false` so `process.kill("SIGTERM")` reaches the real `git-sc` child directly. `git-sc` is resolved to an absolute path via `resolveSpawnCommand` before spawn; PATH scanning allows only absolute entries and excludes empty entries, `.`, and relative paths so cwd ハイジャック (悪意ある repo 直下の `git-sc` / `git-sc.cmd` 優先実行) を防ぐ。Windows では `.EXE`/`.CMD`/`.BAT` 等を探索し、`.cmd`/`.bat` の場合のみ Node.js CVE-2024-27980 対策で `shell: true` を併用する。その際はキャンセル時に `SystemRoot\\System32\\taskkill.exe` または安全に解決した native `taskkill` を絶対パスで起動し、`/PID <pid> /T /F` でプロセスツリーごと終了させる。PATH 上に安全な絶対パスが見つからない場合は spawn せずインストール案内へフォールバックする。
+- External process execution uses `child_process.spawn`. POSIX environments use `shell: false` so `process.kill("SIGTERM")` reaches the real `git-sc` child directly. `git-sc` is resolved to an absolute path via `resolveSpawnCommand` before spawn; PATH scanning allows only absolute entries and excludes empty entries, `.`, and relative paths so cwd ハイジャック (悪意ある repo 直下の `git-sc` / `git-sc.cmd` 優先実行) を防ぐ。Windows では `.EXE`/`.CMD`/`.BAT` 等を探索し、`.cmd`/`.bat` の場合のみ Node.js CVE-2024-27980 対策で `shell: true` を併用する。呼び出し側が拡張子付きコマンド名を渡した場合は `PATHEXT` を連結せず、指定名そのものだけを確認する。その際はキャンセル時に `SystemRoot\\System32\\taskkill.exe` または安全に解決した native `taskkill` を絶対パスで起動し、`/PID <pid> /T /F` でプロセスツリーごと終了させる。PATH 上に安全な絶対パスが見つからない場合は spawn せずインストール案内へフォールバックする。
 - Git CLI 呼び出しは `resolveNativeExecutableOnPath("git")` で `.exe`/`.com` 等の native 実行ファイルを絶対パスに解決してから `execFileSync(<gitPath>, ["-C", <dir>, ...])` で実行する。bare command と `cwd: <dir>` を使わないことで、Windows の `CreateProcess` がカレントディレクトリを実行ファイル探索パスに含める cwd ハイジャックを回避する。`git rev-parse --show-toplevel` の出力は Git が付与する末尾改行だけを除去し、実在するリポジトリパス末尾の空白は保持する。
 - Commands resolve the first reachable Git repository root across open workspace folders before running `git-sc` or `git log`
 - Output is displayed via VS Code `OutputChannel`
@@ -72,8 +73,13 @@ src/
 
 ## Recent Maintenance Notes
 
+- @types/node updated to 25.8.0.
+- Moved patched transitive dependency overrides from the deprecated `package.json#pnpm.overrides` location to `pnpm-workspace.yaml`, matching pnpm 10 behavior and removing the package-time warning.
+- Updated transitive dev dependency lockfile entries, including `@azure/identity` 4.13.1, so `@azure/msal-node` no longer pulls vulnerable `uuid` 8.x and `pnpm audit --audit-level moderate` reports no known vulnerabilities.
+- Fixed `resolveExecutableOnPath` so Windows extension-qualified names (for example `git-sc.cmd`) are resolved only as the specified filename and no longer probe `PATHEXT`-appended variants such as `git-sc.cmd.EXE`.
+- Added regression tests for extension-qualified Windows command lookup to ensure `PATHEXT` is not appended and the specified filename is preferred.
 - Vitest updated to 4.1.6.
-- Added `pnpm.overrides` for patched dev-only transitive dependencies so `pnpm audit --audit-level moderate` reports no known vulnerabilities.
+- Added dependency overrides for patched dev-only transitive dependencies so `pnpm audit --audit-level moderate` reports no known vulnerabilities.
 - Added regression tests for lowercase Windows `path` environment fallback during PATH lookup and lowercase `systemroot` fallback during System32 command resolution.
 - Biome updated to 2.4.15.
 - Fixed `getGitWorkspaceRoot` so Git root paths ending with spaces are preserved; only the line terminator appended by `git rev-parse --show-toplevel` is removed.

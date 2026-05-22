@@ -99,6 +99,16 @@ export function resolveExecutableOnPath(name: string): string | null {
 			continue;
 		}
 
+		// 拡張子付きで指定された場合は、指定名そのものだけを確認する。
+		// PATHEXT を連結すると `git-sc.cmd.EXE` のような別ファイルを誤って返してしまう。
+		if (path.win32.extname(name)) {
+			const direct = pathModule.join(dir, name);
+			if (isRegularFile(direct)) {
+				return direct;
+			}
+			continue;
+		}
+
 		// PATHEXT 順で拡張子付き候補を確認（`path.win32.join` で Windows 形式を維持）
 		for (const ext of pathExts) {
 			const candidate = pathModule.join(dir, name + ext);
@@ -107,7 +117,6 @@ export function resolveExecutableOnPath(name: string): string | null {
 			}
 		}
 
-		// name 自体が拡張子を含むケース
 		const direct = pathModule.join(dir, name);
 		if (isRegularFile(direct)) {
 			return direct;

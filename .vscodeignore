@@ -13,6 +13,7 @@ tsconfig.json
 biome.jsonc
 vitest.config.ts
 pnpm-lock.yaml
+pnpm-workspace.yaml
 versionCounter.cjs
 build-counter.txt
 *.vsix
