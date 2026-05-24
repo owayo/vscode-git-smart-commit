@@ -6,11 +6,31 @@ import {
 	resolveWindowsSystemExecutable,
 } from "./resolveExecutablePath";
 
+function sendSigtermFallback(
+	child: ChildProcess,
+	outputChannel: vscode.OutputChannel,
+): void {
+	try {
+		child.kill("SIGTERM");
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		outputChannel.appendLine(`\n⚠️ Failed to send SIGTERM: ${message}`);
+	}
+}
+
 export function terminateProcessForCancellation(
 	child: ChildProcess,
 	outputChannel: vscode.OutputChannel,
 ): void {
 	if (globalThis.process.platform === "win32" && child.pid !== undefined) {
+		let fallbackSent = false;
+		const fallbackToSigterm = (): void => {
+			if (fallbackSent) {
+				return;
+			}
+			fallbackSent = true;
+			sendSigtermFallback(child, outputChannel);
+		};
 		const taskkillCommand =
 			resolveWindowsSystemExecutable("taskkill") ??
 			resolveNativeExecutableOnPath("taskkill");
@@ -18,6 +38,7 @@ export function terminateProcessForCancellation(
 			outputChannel.appendLine(
 				"\n⚠️ Failed to resolve taskkill executable for cancellation",
 			);
+			fallbackToSigterm();
 			return;
 		}
 
@@ -36,20 +57,23 @@ export function terminateProcessForCancellation(
 				outputChannel.appendLine(
 					`\n⚠️ Failed to start taskkill: ${error.message}`,
 				);
+				fallbackToSigterm();
 			});
 			taskkillProcess.on("close", (code: number | null) => {
 				if (code !== 0) {
 					outputChannel.appendLine(
 						`\n⚠️ taskkill exited with code ${code ?? "null"}`,
 					);
+					fallbackToSigterm();
 				}
 			});
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			outputChannel.appendLine(`\n⚠️ Failed to start taskkill: ${message}`);
+			fallbackToSigterm();
 		}
 		return;
 	}
 
-	child.kill("SIGTERM");
+	sendSigtermFallback(child, outputChannel);
 }

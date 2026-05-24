@@ -47,7 +47,7 @@
 - **出力チャンネル** — git-sc の出力を VS Code 内で直接確認
 - **複数ルートワークスペース対応** — 開いているフォルダー群から Git 管理下のワークスペースルートを自動で選択
 - **実行時環境変数を反映** — Git ルート検出時にその時点の `PATH` など最新の環境変数を使い、古い環境状態を保持しない。`git rev-parse --show-toplevel` の末尾改行だけを除去し、実在するリポジトリパス末尾の空白は保持する
-- **キャンセル時の安定動作** — 実行キャンセル時に不要な失敗通知を表示しない。POSIX では `git-sc` プロセスを直接起動して `SIGTERM` を送り、Windows では `SystemRoot\\System32\\taskkill.exe` または安全に解決した native `taskkill` を絶対パスで起動し、`/T /F` でプロセスツリー全体を終了させるため、キャンセル後にバックグラウンドで処理が続く心配がない。さらに Windows で `taskkill` 自体の起動や終了に失敗した場合も、拡張機能を落とさず出力チャンネルへ警告を記録する
+- **キャンセル時の安定動作** — 実行キャンセル時に不要な失敗通知を表示しない。POSIX では `git-sc` プロセスを直接起動して `SIGTERM` を送り、Windows では `SystemRoot\\System32\\taskkill.exe` または安全に解決した native `taskkill` を絶対パスで起動し、`/T /F` でプロセスツリー全体を終了させるため、キャンセル後にバックグラウンドで処理が続く心配がない。さらに Windows で `taskkill` の解決・起動・終了に失敗した場合も、拡張機能を落とさず出力チャンネルへ警告を記録し、直接の子プロセスへ `SIGTERM` をフォールバック送信する
 - **履歴解析の堅牢化** — `Reword Commit` で `|`、`\x1f`、`\x1e` を含む件名も NUL 区切り解析で正しく扱える。`format:` プレフィックスと改行セパレータ除去により、複数コミット間のハッシュ汚染を防止
 - **履歴状態に応じた案内** — 空リポジトリでは「コミットなし」を警告表示し、`git` 未導入や不正な作業ツリーでは原因を明示して通知
 - **未導入検知の強化** — Windows の `is not recognized` を含むエラーでもインストール案内を表示し、そのまま GitHub の導入手順を開ける。さらに POSIX で `spawn` が `ENOENT` になった際に Node.js が `error` と `close` を連続発火しても、インストール案内ダイアログや失敗通知が重複しないように `settled` フラグで抑止する
@@ -173,7 +173,7 @@ pnpm audit --audit-level moderate
 
 dev 依存の推移依存には `pnpm-workspace.yaml` の `overrides` と lockfile 更新でパッチ済みバージョンを明示し、`pnpm audit --audit-level moderate` が通る状態を維持します。
 
-ユニットテストには、`extension.ts` で登録される各コマンドハンドラのオプション引き渡し、内部コマンド失敗時の例外抑止、キャンセル時の POSIX `SIGTERM` と Windows `taskkill` 分岐、`PATH` の空要素・相対要素・同名ディレクトリを除外する実行ファイル解決、Windows の `Path` / 小文字 `path` 環境変数フォールバック、安全な native `git` 解決、直接指定された `.CMD` を native 実行ファイルとして返さない境界値、拡張子付きコマンド名へ `PATHEXT` を連結しない回帰ケース、`taskkill` の絶対パス解決と `WINDIR` / 小文字 `systemroot` フォールバック、Git ルートパス末尾の空白保持、失敗ログに関する回帰ケースも含まれます。
+ユニットテストには、`extension.ts` で登録される各コマンドハンドラのオプション引き渡し、内部コマンド失敗時の例外抑止、キャンセル時の POSIX `SIGTERM` と Windows `taskkill` 分岐、`taskkill` 失敗時の `SIGTERM` フォールバック、`PATH` の空要素・相対要素・同名ディレクトリを除外する実行ファイル解決、Windows の `Path` / 小文字 `path` 環境変数フォールバック、安全な native `git` 解決、直接指定された `.CMD` を native 実行ファイルとして返さない境界値、拡張子付きコマンド名へ `PATHEXT` を連結しない回帰ケース、`taskkill` の絶対パス解決と `WINDIR` / 小文字 `systemroot` フォールバック、Git ルートパス末尾の空白保持、失敗ログに関する回帰ケースも含まれます。
 
 ### デバッグ
 

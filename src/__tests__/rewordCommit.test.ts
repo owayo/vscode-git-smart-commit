@@ -1917,7 +1917,7 @@ describe("rewordCommit", () => {
 			expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
 				"\n⚠️ Failed to start taskkill: spawn taskkill ENOENT",
 			);
-			expect(proc.kill).not.toHaveBeenCalled();
+			expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
 		} finally {
 			if (originalPlatform) {
 				Object.defineProperty(globalThis.process, "platform", originalPlatform);

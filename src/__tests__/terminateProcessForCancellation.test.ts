@@ -76,6 +76,24 @@ describe("terminateProcessForCancellation", () => {
 		}
 	});
 
+	it("SIGTERM 送信が失敗した場合は outputChannel に記録する", () => {
+		setPlatform("darwin");
+		try {
+			const child = createMockProcess();
+			vi.mocked(child.kill).mockImplementationOnce(() => {
+				throw new Error("kill ESRCH");
+			});
+
+			terminateProcessForCancellation(child, outputChannel as never);
+
+			expect(outputChannel.appendLine).toHaveBeenCalledWith(
+				"\n⚠️ Failed to send SIGTERM: kill ESRCH",
+			);
+		} finally {
+			restorePlatform();
+		}
+	});
+
 	it("Windows では taskkill でプロセスツリーを終了する", () => {
 		setPlatform("win32");
 		try {
@@ -128,7 +146,7 @@ describe("terminateProcessForCancellation", () => {
 		}
 	});
 
-	it("taskkill を安全に解決できない場合は bare command を起動しない", () => {
+	it("taskkill を安全に解決できない場合は bare command を起動せず SIGTERM にフォールバックする", () => {
 		setPlatform("win32");
 		try {
 			const child = createMockProcess();
@@ -142,13 +160,13 @@ describe("terminateProcessForCancellation", () => {
 			expect(outputChannel.appendLine).toHaveBeenCalledWith(
 				"\n⚠️ Failed to resolve taskkill executable for cancellation",
 			);
-			expect(child.kill).not.toHaveBeenCalled();
+			expect(child.kill).toHaveBeenCalledWith("SIGTERM");
 		} finally {
 			restorePlatform();
 		}
 	});
 
-	it("taskkill の非同期起動エラーを outputChannel に記録する", () => {
+	it("taskkill の非同期起動エラーを記録して SIGTERM にフォールバックする", () => {
 		setPlatform("win32");
 		try {
 			const child = createMockProcess();
@@ -162,13 +180,32 @@ describe("terminateProcessForCancellation", () => {
 			expect(outputChannel.appendLine).toHaveBeenCalledWith(
 				"\n⚠️ Failed to start taskkill: spawn taskkill ENOENT",
 			);
-			expect(child.kill).not.toHaveBeenCalled();
+			expect(child.kill).toHaveBeenCalledWith("SIGTERM");
 		} finally {
 			restorePlatform();
 		}
 	});
 
-	it("taskkill の非 0 終了を outputChannel に記録する", () => {
+	it("taskkill の error と close が連続しても SIGTERM フォールバックは一度だけ送る", () => {
+		setPlatform("win32");
+		try {
+			const child = createMockProcess();
+			const taskkillProcess = createMockProcess();
+			Object.defineProperty(child, "pid", { value: 5152, configurable: true });
+			mockSpawn.mockReturnValueOnce(taskkillProcess);
+
+			terminateProcessForCancellation(child, outputChannel as never);
+			taskkillProcess.__emit("error", new Error("spawn taskkill ENOENT"));
+			taskkillProcess.__emit("close", 1);
+
+			expect(child.kill).toHaveBeenCalledTimes(1);
+			expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+		} finally {
+			restorePlatform();
+		}
+	});
+
+	it("taskkill の非 0 終了を記録して SIGTERM にフォールバックする", () => {
 		setPlatform("win32");
 		try {
 			const child = createMockProcess();
@@ -182,13 +219,13 @@ describe("terminateProcessForCancellation", () => {
 			expect(outputChannel.appendLine).toHaveBeenCalledWith(
 				"\n⚠️ taskkill exited with code 1",
 			);
-			expect(child.kill).not.toHaveBeenCalled();
+			expect(child.kill).toHaveBeenCalledWith("SIGTERM");
 		} finally {
 			restorePlatform();
 		}
 	});
 
-	it("taskkill の同期起動エラーを outputChannel に記録する", () => {
+	it("taskkill の同期起動エラーを記録して SIGTERM にフォールバックする", () => {
 		setPlatform("win32");
 		try {
 			const child = createMockProcess();
@@ -202,7 +239,7 @@ describe("terminateProcessForCancellation", () => {
 			expect(outputChannel.appendLine).toHaveBeenCalledWith(
 				"\n⚠️ Failed to start taskkill: spawn taskkill EACCES",
 			);
-			expect(child.kill).not.toHaveBeenCalled();
+			expect(child.kill).toHaveBeenCalledWith("SIGTERM");
 		} finally {
 			restorePlatform();
 		}
@@ -247,7 +284,7 @@ describe("terminateProcessForCancellation", () => {
 		}
 	});
 
-	it("taskkill が code null (シグナルキル) で終了した場合も警告を出す", () => {
+	it("taskkill が code null (シグナルキル) で終了した場合も警告を出して SIGTERM にフォールバックする", () => {
 		setPlatform("win32");
 		try {
 			const child = createMockProcess();
@@ -261,7 +298,7 @@ describe("terminateProcessForCancellation", () => {
 			expect(outputChannel.appendLine).toHaveBeenCalledWith(
 				"\n⚠️ taskkill exited with code null",
 			);
-			expect(child.kill).not.toHaveBeenCalled();
+			expect(child.kill).toHaveBeenCalledWith("SIGTERM");
 		} finally {
 			restorePlatform();
 		}
