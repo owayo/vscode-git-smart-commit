@@ -30,27 +30,55 @@ function killPosixProcessGroup(
 	child.kill(signal);
 }
 
+function sendSignalFallback(
+	child: ChildProcess,
+	outputChannel: vscode.OutputChannel,
+	signal: NodeJS.Signals,
+): void {
+	try {
+		if (globalThis.process.platform === "win32") {
+			child.kill(signal);
+		} else {
+			killPosixProcessGroup(child, signal);
+		}
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		outputChannel.appendLine(`\n⚠️ Failed to send ${signal}: ${message}`);
+	}
+}
+
+/**
+ * 後方互換のための薄いラッパー。`signal` は SIGTERM 固定。
+ * SIGKILL を送りたい場合は `terminateProcessForCancellation(child, outputChannel, "SIGKILL")` を使う。
+ */
 function sendSigtermFallback(
 	child: ChildProcess,
 	outputChannel: vscode.OutputChannel,
 ): void {
-	try {
-		if (globalThis.process.platform === "win32") {
-			child.kill("SIGTERM");
-		} else {
-			killPosixProcessGroup(child, "SIGTERM");
-		}
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		outputChannel.appendLine(`\n⚠️ Failed to send SIGTERM: ${message}`);
-	}
+	sendSignalFallback(child, outputChannel, "SIGTERM");
 }
 
+/**
+ * キャンセル時に子プロセスを終了させる。
+ *
+ * - SIGTERM (既定): Windows では `taskkill /T /F` でプロセスツリーを終了、POSIX では
+ *   プロセスグループへ `SIGTERM` を送信し、孫プロセス (`git-sc` が起動した `git` 等) も
+ *   まとめて停止する。
+ * - SIGKILL (POSIX 用昇格): 一定時間経過しても `close` が来ない場合に呼び出し側で起動する
+ *   timer から呼ばれる。SIGTERM を `trap "" TERM` 等で無視するプロセスを強制終了する。
+ *   Windows では `taskkill /F` 自体が強制終了相当のため、追加昇格は不要 (呼び出し側で
+ *   POSIX のみ timer を仕掛ける運用)。
+ */
 export function terminateProcessForCancellation(
 	child: ChildProcess,
 	outputChannel: vscode.OutputChannel,
+	signal: NodeJS.Signals = "SIGTERM",
 ): void {
-	if (globalThis.process.platform === "win32" && child.pid !== undefined) {
+	if (
+		globalThis.process.platform === "win32" &&
+		signal === "SIGTERM" &&
+		child.pid !== undefined
+	) {
 		let fallbackSent = false;
 		const fallbackToSigterm = (): void => {
 			if (fallbackSent) {
@@ -103,5 +131,5 @@ export function terminateProcessForCancellation(
 		return;
 	}
 
-	sendSigtermFallback(child, outputChannel);
+	sendSignalFallback(child, outputChannel, signal);
 }

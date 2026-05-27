@@ -348,6 +348,46 @@ describe("terminateProcessForCancellation", () => {
 		}
 	});
 
+	it("POSIX で SIGKILL を指定するとプロセスグループへ SIGKILL を送る", () => {
+		// SIGTERM を `trap "" TERM` で無視するプロセスに備え、上位ロジックが timer で
+		// SIGKILL に昇格させる経路。terminateProcessForCancellation は signal 引数を
+		// そのままプロセスグループへ転送する。
+		setPlatform("linux");
+		const originalKill = globalThis.process.kill;
+		const killSpy = vi.fn();
+		globalThis.process.kill = killSpy as typeof globalThis.process.kill;
+		try {
+			const child = createMockProcess();
+			Object.defineProperty(child, "pid", { value: 7777, configurable: true });
+
+			terminateProcessForCancellation(child, outputChannel as never, "SIGKILL");
+
+			expect(killSpy).toHaveBeenCalledWith(-7777, "SIGKILL");
+			expect(child.kill).not.toHaveBeenCalled();
+		} finally {
+			globalThis.process.kill = originalKill;
+			restorePlatform();
+		}
+	});
+
+	it("Windows で SIGKILL を指定すると taskkill を使わず直接 child.kill(SIGKILL) を呼ぶ", () => {
+		// Windows では taskkill /F が既に強制終了相当なので、SIGTERM 経路でだけ taskkill を使う。
+		// 念のため明示的に SIGKILL を渡された場合は child.kill(SIGKILL) にフォールバックする
+		// (Windows ChildProcess.kill は signal 引数を実質無視し ExitProcess を呼ぶ)。
+		setPlatform("win32");
+		try {
+			const child = createMockProcess();
+			Object.defineProperty(child, "pid", { value: 8888, configurable: true });
+
+			terminateProcessForCancellation(child, outputChannel as never, "SIGKILL");
+
+			expect(mockSpawn).not.toHaveBeenCalled();
+			expect(child.kill).toHaveBeenCalledWith("SIGKILL");
+		} finally {
+			restorePlatform();
+		}
+	});
+
 	it("POSIX のグループ kill が失敗したら単体 PID にフォールバックする", () => {
 		// detached:true で spawn したつもりがセッションリーダー化に失敗していた等で
 		// 負の PID への kill が ESRCH を返した場合、子プロセス本体への kill にフォールバックして

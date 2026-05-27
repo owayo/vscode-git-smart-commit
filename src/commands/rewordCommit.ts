@@ -237,10 +237,19 @@ async function runGitScReword(
 			return new Promise<void>((resolve, reject) => {
 				let isCancelled = false;
 				let settled = false;
+				let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
+
+				const clearForceKillTimer = (): void => {
+					if (forceKillTimer !== undefined) {
+						clearTimeout(forceKillTimer);
+						forceKillTimer = undefined;
+					}
+				};
 
 				const resolveOnce = (): void => {
 					if (!settled) {
 						settled = true;
+						clearForceKillTimer();
 						resolve();
 					}
 				};
@@ -248,6 +257,7 @@ async function runGitScReword(
 				const rejectOnce = (error: Error): void => {
 					if (!settled) {
 						settled = true;
+						clearForceKillTimer();
 						reject(error);
 					}
 				};
@@ -367,12 +377,33 @@ async function runGitScReword(
 				});
 
 				token.onCancellationRequested(() => {
+					if (isCancelled) {
+						return;
+					}
 					isCancelled = true;
 					terminateProcessForCancellation(process, outputChannel);
 					outputChannel.appendLine("\n⚠️ Reword cancelled by user");
 					// resolveOnce() はここでは呼ばない。close イベントで
 					// プロセス (および POSIX ではプロセスグループ) の終了を確認してから
 					// resolve することで、終了未確定のまま VS Code に成功扱いされるのを避ける。
+					//
+					// SIGTERM を `trap "" TERM` 等で無視するプロセスに備え、POSIX では
+					// 一定時間後に SIGKILL へ昇格してプロセスグループを強制終了する。
+					// Windows は taskkill /F が既に強制終了相当なので追加昇格は不要。
+					if (isPosix) {
+						forceKillTimer = setTimeout(() => {
+							if (!settled) {
+								outputChannel.appendLine(
+									"\n⚠️ git-sc did not exit after SIGTERM; sending SIGKILL",
+								);
+								terminateProcessForCancellation(
+									process,
+									outputChannel,
+									"SIGKILL",
+								);
+							}
+						}, 5000);
+					}
 				});
 			});
 		},

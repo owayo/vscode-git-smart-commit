@@ -1143,6 +1143,119 @@ describe("runGitSc", () => {
 		expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
 	});
 
+	it("should escalate to SIGKILL on POSIX when close does not arrive after SIGTERM", async () => {
+		// SIGTERM を無視するプロセスがあると close が来ず Promise が永久 pending になるため、
+		// POSIX では 5 秒経過後に SIGKILL に昇格してプロセスグループを強制終了する。
+		const originalPlatform = Object.getOwnPropertyDescriptor(
+			globalThis.process,
+			"platform",
+		);
+		Object.defineProperty(globalThis.process, "platform", {
+			value: "linux",
+			configurable: true,
+		});
+		const originalKill = globalThis.process.kill;
+		const killSpy = vi.fn();
+		globalThis.process.kill = killSpy as typeof globalThis.process.kill;
+		vi.useFakeTimers();
+
+		try {
+			const proc = createMockProcess();
+			Object.defineProperty(proc, "pid", { value: 12345, configurable: true });
+			mockSpawn.mockReturnValue(proc);
+
+			let cancelHandler: (() => void) | undefined;
+			const progress = { report: vi.fn() };
+			const token = {
+				onCancellationRequested: vi.fn((cb: () => void) => {
+					cancelHandler = cb;
+				}),
+			};
+			mockWithProgress.mockImplementationOnce((_options, callback) =>
+				callback(progress, token),
+			);
+
+			const progressPromise = runGitSc(mockOutputChannel as never, {
+				autoConfirm: true,
+			});
+
+			await vi.advanceTimersByTimeAsync(10);
+			cancelHandler?.();
+
+			// 直後は SIGTERM のみ
+			expect(killSpy).toHaveBeenCalledWith(-12345, "SIGTERM");
+			expect(killSpy).not.toHaveBeenCalledWith(-12345, "SIGKILL");
+
+			// 5 秒経過で SIGKILL に昇格
+			await vi.advanceTimersByTimeAsync(5000);
+			expect(killSpy).toHaveBeenCalledWith(-12345, "SIGKILL");
+
+			// close 発火で Promise が解決される
+			proc.__emit("close", null);
+			await progressPromise;
+		} finally {
+			vi.useRealTimers();
+			globalThis.process.kill = originalKill;
+			if (originalPlatform) {
+				Object.defineProperty(globalThis.process, "platform", originalPlatform);
+			}
+		}
+	});
+
+	it("should not escalate to SIGKILL when close arrives quickly after cancellation", async () => {
+		// 通常のキャンセルフロー: SIGTERM 後すぐ close が来た場合は SIGKILL を送らない。
+		// forceKillTimer が close 時にクリアされることを保証する。
+		const originalPlatform = Object.getOwnPropertyDescriptor(
+			globalThis.process,
+			"platform",
+		);
+		Object.defineProperty(globalThis.process, "platform", {
+			value: "linux",
+			configurable: true,
+		});
+		const originalKill = globalThis.process.kill;
+		const killSpy = vi.fn();
+		globalThis.process.kill = killSpy as typeof globalThis.process.kill;
+		vi.useFakeTimers();
+
+		try {
+			const proc = createMockProcess();
+			Object.defineProperty(proc, "pid", { value: 22222, configurable: true });
+			mockSpawn.mockReturnValue(proc);
+
+			let cancelHandler: (() => void) | undefined;
+			const progress = { report: vi.fn() };
+			const token = {
+				onCancellationRequested: vi.fn((cb: () => void) => {
+					cancelHandler = cb;
+				}),
+			};
+			mockWithProgress.mockImplementationOnce((_options, callback) =>
+				callback(progress, token),
+			);
+
+			const progressPromise = runGitSc(mockOutputChannel as never, {
+				autoConfirm: true,
+			});
+
+			await vi.advanceTimersByTimeAsync(10);
+			cancelHandler?.();
+			proc.__emit("close", null);
+
+			// close 後に 5 秒経過しても SIGKILL は送られない (timer がクリアされている)
+			await vi.advanceTimersByTimeAsync(10_000);
+			expect(killSpy).not.toHaveBeenCalledWith(-22222, "SIGKILL");
+
+			await progressPromise;
+		} finally {
+			vi.useRealTimers();
+			globalThis.process.kill = originalKill;
+			if (originalPlatform) {
+				Object.defineProperty(globalThis.process, "platform", originalPlatform);
+			}
+		}
+	});
+
 	it("should wait for close event before resolving cancelled run", async () => {
 		// キャンセル直後に resolveOnce を呼ばず、プロセスの close を待ってから
 		// resolve することで、VS Code 上で「終了未確定なのに成功通知」になる事象を防ぐ。
