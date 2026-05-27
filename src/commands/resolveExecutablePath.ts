@@ -192,32 +192,108 @@ export function resolveWindowsSystemExecutable(name: string): string | null {
 }
 
 /**
- * `child_process.spawn` で安全に実行ファイルを起動するための
- * コマンドパスとシェル指定を返す。
+ * Windows コマンドライン仕様 (CommandLineToArgvW 互換) で 1 引数を quote する。
  *
- * - POSIX: PATH の絶対パス要素から実行可能ファイルを解決して返す。
- *   空要素や `.` が含まれる PATH でも workspaceRoot 配下の実行ファイルを拾わない。
- * - Windows: PATH 走査で絶対パスを解決して bare command 起動時の cwd ハイジャックを回避する。
- *   `.cmd` / `.bat` は CVE-2024-27980 対策で `shell: true` が必須、それ以外（`.exe` 等）は
- *   `shell: false` で直接起動できる。
- *
- * PATH 上に解決できなかった場合は `null` を返す。
- * 呼び出し側はこれを受けて未検出ダイアログ等にフォールバックすること。
- * （bare command + `shell: true` でフォールバックすると cwd ハイジャックが復活するため使わない）
+ * cmd.exe `/s /c "..."` 経由で `.cmd` / `.bat` を起動する際、
+ * `windowsVerbatimArguments: true` で Node を経由した自動 quote を抑止しつつ、
+ * 自前で安全に quote する必要がある。`shell: true` + `args` 配列の組み合わせは
+ * Node.js DEP0190 で「値が escape されず空白連結される」ため、空白入りパスや
+ * cmd.exe メタ文字 (`&` `|` `<` `>` `^`) を含む引数で shell injection の余地が残る。
  */
-export function resolveSpawnCommand(name: string): {
+function escapeCmdArgument(value: string): string {
+	// 制御文字 (改行・NUL) は cmd.exe では引数として渡せないので拒否する
+	if (/[\r\n\x00]/.test(value)) {
+		throw new Error(
+			`Argument contains unsupported control characters: ${JSON.stringify(value)}`,
+		);
+	}
+
+	// CommandLineToArgvW のルールに従ってバックスラッシュと " をエスケープする
+	let escaped = "";
+	let backslashes = 0;
+	for (const ch of value) {
+		if (ch === "\\") {
+			backslashes += 1;
+			continue;
+		}
+		if (ch === '"') {
+			escaped += "\\".repeat(backslashes * 2 + 1) + '"';
+			backslashes = 0;
+			continue;
+		}
+		escaped += "\\".repeat(backslashes) + ch;
+		backslashes = 0;
+	}
+	// 末尾のバックスラッシュは閉じ " の前で倍にする必要がある
+	escaped += "\\".repeat(backslashes * 2);
+	return `"${escaped}"`;
+}
+
+/**
+ * `cmd.exe /d /s /c "..."` 仕様に従い、実行ファイル + 引数を 1 行に組み立てる。
+ *
+ * `/s` フラグは「最初と最後の " を剥がす」だけのため、引数ごとに quote した
+ * `"path\\to\\file.cmd" "-y"` を全体としてさらに `"` で囲むだけで安全に伝達できる。
+ */
+function buildCmdCommandLine(executable: string, args: string[]): string {
+	const tokens = [executable, ...args].map(escapeCmdArgument);
+	return `"${tokens.join(" ")}"`;
+}
+
+export interface SpawnCommandResolution {
+	/** spawn に渡す実行ファイル (常に絶対パス) */
 	command: string;
-	useShell: boolean;
-} | null {
+	/** spawn に渡す引数。`.cmd`/`.bat` 経由起動時は `["/d", "/s", "/c", "..."]` 形式 */
+	args: string[];
+	/**
+	 * `child_process.spawn` の `windowsVerbatimArguments` 指定。
+	 * cmd.exe 経由起動時は自前で組み立てた command line をそのまま CreateProcess へ
+	 * 渡すために true を指定する。それ以外は false。
+	 */
+	windowsVerbatimArguments: boolean;
+}
+
+export function resolveSpawnCommand(
+	name: string,
+	args: readonly string[] = [],
+): SpawnCommandResolution | null {
 	const resolved = resolveExecutableOnPath(name);
 	if (!resolved) {
-		// 安全な絶対パスが得られないため、呼び出し側で未検出として扱う
 		return null;
 	}
 
+	if (globalThis.process.platform !== "win32") {
+		return {
+			command: resolved,
+			args: [...args],
+			windowsVerbatimArguments: false,
+		};
+	}
+
 	const lower = resolved.toLowerCase();
-	const useShell =
-		globalThis.process.platform === "win32" &&
-		(lower.endsWith(".cmd") || lower.endsWith(".bat"));
-	return { command: resolved, useShell };
+	const needsCmdExe = lower.endsWith(".cmd") || lower.endsWith(".bat");
+	if (!needsCmdExe) {
+		return {
+			command: resolved,
+			args: [...args],
+			windowsVerbatimArguments: false,
+		};
+	}
+
+	// `.cmd` / `.bat` は CreateProcess で直接起動できないため cmd.exe 経由で起動する。
+	// cmd.exe は必ず System32 配下から絶対パスで resolve し、bare command による cwd ハイジャックを防ぐ。
+	// Node.js DEP0190 (shell:true + args の unsafe な空白連結) を回避するため、
+	// `windowsVerbatimArguments: true` で生 command line を渡す。各引数は CommandLineToArgvW
+	// 互換で自前 quote する。
+	const cmdExe = resolveWindowsSystemExecutable("cmd");
+	if (!cmdExe) {
+		return null;
+	}
+
+	const commandLine = buildCmdCommandLine(resolved, [...args]);
+	return {
+		command: cmdExe,
+		args: ["/d", "/s", "/c", commandLine],
+		windowsVerbatimArguments: true,
+	};
 }

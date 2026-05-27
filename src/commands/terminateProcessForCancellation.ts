@@ -6,12 +6,40 @@ import {
 	resolveWindowsSystemExecutable,
 } from "./resolveExecutablePath";
 
+/**
+ * POSIX で子プロセスとその子孫 (`git-sc` が起動した `git` 等) をまとめて終了させる。
+ *
+ * `runGitSc` / `rewordCommit` は POSIX で `detached: true` で spawn しており、
+ * 子プロセスがプロセスグループのリーダーになっている。負の PID で kill すると
+ * 同じグループに属する全プロセスへシグナルが届くため、孫プロセスが残るのを防げる。
+ * `process.kill(-pid)` が失敗した場合 (グループ化に失敗していた等) は単体 PID への
+ * フォールバックを試みる。
+ */
+function killPosixProcessGroup(
+	child: ChildProcess,
+	signal: NodeJS.Signals,
+): void {
+	if (child.pid !== undefined) {
+		try {
+			globalThis.process.kill(-child.pid, signal);
+			return;
+		} catch {
+			// グループ kill に失敗した場合は単体 PID へフォールバック
+		}
+	}
+	child.kill(signal);
+}
+
 function sendSigtermFallback(
 	child: ChildProcess,
 	outputChannel: vscode.OutputChannel,
 ): void {
 	try {
-		child.kill("SIGTERM");
+		if (globalThis.process.platform === "win32") {
+			child.kill("SIGTERM");
+		} else {
+			killPosixProcessGroup(child, "SIGTERM");
+		}
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		outputChannel.appendLine(`\n⚠️ Failed to send SIGTERM: ${message}`);

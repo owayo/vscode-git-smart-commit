@@ -109,11 +109,15 @@ describe("runGitSc", () => {
 		mockGetGitWorkspaceRoot.mockReturnValue("/test/workspace");
 		mockResolveNativeExecutableOnPath.mockReturnValue(null);
 		mockResolveWindowsSystemExecutable.mockReturnValue(TASKKILL_COMMAND);
-		// resolveSpawnCommand の既定挙動をこのテスト専用の固定値に戻す
-		mockResolveSpawnCommand.mockImplementation((name: string) => ({
-			command: name,
-			useShell: globalThis.process.platform === "win32",
-		}));
+		// resolveSpawnCommand の既定挙動をこのテスト専用の固定値に戻す。
+		// 引数 args をそのままパススルーすることで spawn 検証用 expect を簡潔に保つ。
+		mockResolveSpawnCommand.mockImplementation(
+			(name: string, args: readonly string[] = []) => ({
+				command: name,
+				args: [...args],
+				windowsVerbatimArguments: false,
+			}),
+		);
 		mockOutputChannel = {
 			show: vi.fn(),
 			appendLine: vi.fn(),
@@ -1139,7 +1143,49 @@ describe("runGitSc", () => {
 		expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
 	});
 
-	it("should spawn git-sc with shell:true on win32 platform", async () => {
+	it("should wait for close event before resolving cancelled run", async () => {
+		// キャンセル直後に resolveOnce を呼ばず、プロセスの close を待ってから
+		// resolve することで、VS Code 上で「終了未確定なのに成功通知」になる事象を防ぐ。
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		let cancelHandler: (() => void) | undefined;
+		const progress = { report: vi.fn() };
+		const token = {
+			onCancellationRequested: vi.fn((cb: () => void) => {
+				cancelHandler = cb;
+			}),
+		};
+		mockWithProgress.mockImplementationOnce((_options, callback) =>
+			callback(progress, token),
+		);
+
+		const progressPromise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		cancelHandler?.();
+
+		// close を発火しなければ progressPromise は未解決のまま
+		let resolved = false;
+		progressPromise.then(() => {
+			resolved = true;
+		});
+
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		expect(resolved).toBe(false);
+
+		// close 発火後に解決される
+		proc.__emit("close", null);
+		await progressPromise;
+		expect(resolved).toBe(true);
+	});
+
+	it("should spawn git-sc with shell:false + windowsVerbatimArguments from resolveSpawnCommand on win32", async () => {
+		// 新実装では .cmd/.bat の場合のみ cmd.exe 経由で起動する。
+		// mockResolveSpawnCommand が cmd.exe 経由相当の解決結果を返した場合、
+		// spawn は windowsVerbatimArguments:true、shell:false で呼ばれることを検証する。
 		const originalPlatform = Object.getOwnPropertyDescriptor(
 			globalThis.process,
 			"platform",
@@ -1150,6 +1196,12 @@ describe("runGitSc", () => {
 		});
 
 		try {
+			mockResolveSpawnCommand.mockReturnValueOnce({
+				command: "C:\\Windows\\System32\\cmd.exe",
+				args: ["/d", "/s", "/c", '""C:\\bin\\git-sc.CMD" "-y""'],
+				windowsVerbatimArguments: true,
+			});
+
 			const proc = createMockProcess();
 			mockSpawn.mockReturnValue(proc);
 
@@ -1160,9 +1212,14 @@ describe("runGitSc", () => {
 			await promise;
 
 			expect(mockSpawn).toHaveBeenCalledWith(
-				"git-sc",
-				["-y"],
-				expect.objectContaining({ shell: true, windowsHide: true }),
+				"C:\\Windows\\System32\\cmd.exe",
+				["/d", "/s", "/c", '""C:\\bin\\git-sc.CMD" "-y""'],
+				expect.objectContaining({
+					shell: false,
+					windowsVerbatimArguments: true,
+					windowsHide: true,
+					detached: false,
+				}),
 			);
 		} finally {
 			if (originalPlatform) {
@@ -1171,7 +1228,9 @@ describe("runGitSc", () => {
 		}
 	});
 
-	it("should spawn git-sc with shell:false on non-win32 platform", async () => {
+	it("should spawn git-sc with shell:false + detached:true on POSIX to enable process-group kill", async () => {
+		// POSIX では detached:true でプロセスグループを作り、キャンセル時に
+		// git-sc の子孫プロセス (git 等) ごと終了させる。
 		const originalPlatform = Object.getOwnPropertyDescriptor(
 			globalThis.process,
 			"platform",
@@ -1194,7 +1253,12 @@ describe("runGitSc", () => {
 			expect(mockSpawn).toHaveBeenCalledWith(
 				"git-sc",
 				["-y"],
-				expect.objectContaining({ shell: false, windowsHide: true }),
+				expect.objectContaining({
+					shell: false,
+					detached: true,
+					windowsVerbatimArguments: false,
+					windowsHide: true,
+				}),
 			);
 		} finally {
 			if (originalPlatform) {

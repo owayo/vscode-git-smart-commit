@@ -62,7 +62,12 @@ src/
 ### Key Patterns
 
 - Commands are registered in `activate()` and added to `context.subscriptions`
-- External process execution uses `child_process.spawn`. POSIX environments use `shell: false` so `process.kill("SIGTERM")` reaches the real `git-sc` child directly. `git-sc` is resolved to an absolute path via `resolveSpawnCommand` before spawn; PATH scanning allows only absolute entries and excludes empty entries, `.`, and relative paths so cwd ハイジャック (悪意ある repo 直下の `git-sc` / `git-sc.cmd` 優先実行) を防ぐ。Windows では `.EXE`/`.CMD`/`.BAT` 等を探索し、`.cmd`/`.bat` の場合のみ Node.js CVE-2024-27980 対策で `shell: true` を併用する。呼び出し側が拡張子付きコマンド名を渡した場合は `PATHEXT` を連結せず、指定名そのものだけを確認する。その際はキャンセル時に `SystemRoot\\System32\\taskkill.exe` または安全に解決した native `taskkill` を絶対パスで起動し、`/PID <pid> /T /F` でプロセスツリーごと終了させる。`taskkill` の解決・起動・終了に失敗した場合は直接の子プロセスへ `SIGTERM` をフォールバック送信する。PATH 上に安全な絶対パスが見つからない場合は spawn せずインストール案内へフォールバックする。
+- External process execution uses `child_process.spawn` with **`shell: false` を全 platform で固定**。`git-sc` は `resolveSpawnCommand(name, args)` で絶対パスに解決した上で起動する。PATH 走査は絶対パス要素だけを許容し、空要素・`.`・相対パスは全て除外することで cwd ハイジャック (悪意ある repo 直下の `git-sc` / `git-sc.cmd` 優先実行) を防ぐ。
+  - **POSIX**: `detached: true` で起動し子プロセスがプロセスグループのリーダーになる。キャンセル時は `process.kill(-pid, "SIGTERM")` でプロセスグループ全体へ送信し、`git-sc` が起動した `git` 等の孫プロセスもまとめて終了させる。`process.kill(-pid)` が失敗した場合は直接の子プロセスへ `SIGTERM` をフォールバック送信する。
+  - **Windows `.exe` 等**: 絶対パスを `shell: false` で直接起動する。
+  - **Windows `.cmd` / `.bat`**: CreateProcess で直接起動できないため、`SystemRoot\System32\cmd.exe` を絶対パスで解決し、各引数を CommandLineToArgvW 互換で自前 quote した上で `["/d", "/s", "/c", "\"resolved\" \"arg1\" ..."]` を `windowsVerbatimArguments: true` で渡す。これにより Node.js DEP0190 (`shell: true` + `args` の unsafe な空白連結による shell injection) と、空白入りパス / cmd.exe メタ文字を含む引数による injection の双方を回避する。キャンセル時は `SystemRoot\System32\taskkill.exe` または安全に解決した native `taskkill` を絶対パスで起動し、`/PID <pid> /T /F` でプロセスツリーごと終了させる。`taskkill` の解決・起動・終了に失敗した場合は直接の子プロセスへ `SIGTERM` をフォールバック送信する。
+  - PATH 上に安全な絶対パスが見つからない場合・Windows で cmd.exe を解決できない場合は、フォールバック spawn せずインストール案内へ誘導する。
+- Cancellation はキャンセルハンドラ内で `resolveOnce()` を呼ばず、`close` イベントでプロセス (および POSIX ではプロセスグループ) の終了を確認してから resolve する。これにより、キャンセル直後に終了未確定のまま VS Code 上で成功扱いになり、`git-sc` の子孫プロセスが裏で走り続ける事象を防ぐ。
 - Git CLI 呼び出しは `resolveNativeExecutableOnPath("git")` で `.exe`/`.com` 等の native 実行ファイルを絶対パスに解決してから `execFileSync(<gitPath>, ["-C", <dir>, ...])` で実行する。bare command と `cwd: <dir>` を使わないことで、Windows の `CreateProcess` がカレントディレクトリを実行ファイル探索パスに含める cwd ハイジャックを回避する。`git rev-parse --show-toplevel` の出力は Git が付与する末尾改行だけを除去し、実在するリポジトリパス末尾の空白は保持する。
 - Commands resolve the first reachable Git repository root across open workspace folders before running `git-sc` or `git log`
 - Output is displayed via VS Code `OutputChannel`
@@ -75,8 +80,11 @@ src/
 
 - @types/node updated to 25.9.1.
 - Vitest updated to 4.1.7.
+- **Security fix (Node.js DEP0190 対応)**: Windows `.cmd` / `.bat` 起動を `shell: true` + `args` 配列の組み合わせから cmd.exe 経由起動 (`windowsVerbatimArguments: true` + 自前 quote) に変更。Node.js DEP0190 は `shell: true` + `args` の組み合わせが「値を escape せず空白連結する」ため shell injection のリスクがあるとして runtime deprecation 化されており、空白入り PATH や cmd.exe メタ文字 (`&` `|` `<` `>` `^`) を含む引数で injection の余地が残っていた。`resolveSpawnCommand` の API を `(name, args)` を受け取り `{ command, args, windowsVerbatimArguments }` を返す形に変更し、`.cmd` / `.bat` の場合だけ `SystemRoot\System32\cmd.exe` を絶対パスで解決して `["/d", "/s", "/c", "\"resolved\" \"arg1\" ..."]` に組み立てる。各引数は CommandLineToArgvW 互換で自前 quote する。
+- **Security fix (キャンセル時の子孫プロセス漏れ)**: POSIX で `detached: true` で `git-sc` を spawn しプロセスグループを作るように変更。キャンセル時は `process.kill(-pid, "SIGTERM")` でグループ全体に SIGTERM を送り、`git-sc` が起動した `git` 等の孫プロセスもまとめて終了させる。グループ kill に失敗した場合は単体 PID にフォールバック。さらに `token.onCancellationRequested` ハンドラから即時 `resolveOnce()` を撤去し、`close` イベントでプロセス終了を確認してから resolve するよう変更。これにより、キャンセル直後に終了未確定のまま VS Code に成功通知が出て裏で `git-sc` が走り続ける事象を解消する。
 - Added regression tests covering `getGitWorkspaceRoot` で `resolveNativeExecutableOnPath("git")` が複数フォルダ走査でも一度しか呼ばれないキャッシュ挙動と、多フォルダ列挙中に safe git executable が解決不能なら直ちに ENOENT を伝搬する挙動。
 - Added regression tests for `isCommandNotFoundError` で複数行 stderr (POSIX のヘッダ + bash "command not found" 行 / Windows の "is not recognized" 行) の中間にパターンが現れても検出できること。
+- Added regression tests for POSIX のプロセスグループ kill (`process.kill(-pid, "SIGTERM")`)、グループ kill 失敗時の単体 PID フォールバック、キャンセル後 close 待ち (close イベント発火まで Promise を解決しないこと)、Windows での cmd.exe 経由起動 (`shell:false` + `windowsVerbatimArguments:true`) と POSIX での `detached:true` 指定、空白入り PATH での自前 quote、改行・NUL を含む引数の例外送出、cmd.exe を解決できない場合の null フォールバック等。
 - Added regression test for `terminateProcessForCancellation` で POSIX (linux/darwin) 上で `child.pid` が未定義の場合でも `child.kill("SIGTERM")` の呼び出しを試みること。
 - Fixed Windows cancellation fallback so unresolved, failed-to-start, or non-zero-exiting `taskkill` now logs a warning and still sends `SIGTERM` to the direct child process.
 - Added regression tests for `taskkill` resolution/startup/exit fallback paths and for avoiding duplicate SIGTERM fallback when `error` and `close` both fire.

@@ -540,11 +540,15 @@ describe("rewordCommit", () => {
 		mockGetGitWorkspaceRoot.mockReturnValue("/test/workspace");
 		mockResolveNativeExecutableOnPath.mockReturnValue(GIT_COMMAND);
 		mockResolveWindowsSystemExecutable.mockReturnValue(TASKKILL_COMMAND);
-		// resolveSpawnCommand の既定挙動をこのテスト専用の固定値に戻す
-		mockResolveSpawnCommand.mockImplementation((name: string) => ({
-			command: name,
-			useShell: globalThis.process.platform === "win32",
-		}));
+		// resolveSpawnCommand の既定挙動をこのテスト専用の固定値に戻す。
+		// 引数 args をそのままパススルーすることで spawn 検証用 expect を簡潔に保つ。
+		mockResolveSpawnCommand.mockImplementation(
+			(name: string, args: readonly string[] = []) => ({
+				command: name,
+				args: [...args],
+				windowsVerbatimArguments: false,
+			}),
+		);
 		mockWithProgress.mockImplementation(
 			async (
 				_options: unknown,
@@ -1741,7 +1745,10 @@ describe("rewordCommit", () => {
 		expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
 	});
 
-	it("should spawn git-sc with shell:true on win32 platform for reword", async () => {
+	it("should spawn git-sc reword with shell:false + windowsVerbatimArguments from resolveSpawnCommand on win32", async () => {
+		// 新実装では .cmd/.bat の場合のみ cmd.exe 経由で起動する。
+		// mockResolveSpawnCommand が cmd.exe 経由相当の解決結果を返した場合、
+		// reword でも spawn は windowsVerbatimArguments:true、shell:false で呼ばれることを検証する。
 		mockExecFileSync.mockReturnValue(
 			"abc1234\x00feat: test\x001h ago\x00Author\x00",
 		);
@@ -1760,6 +1767,17 @@ describe("rewordCommit", () => {
 		});
 
 		try {
+			mockResolveSpawnCommand.mockReturnValueOnce({
+				command: "C:\\Windows\\System32\\cmd.exe",
+				args: [
+					"/d",
+					"/s",
+					"/c",
+					'""C:\\bin\\git-sc.CMD" "--reword" "abc1234" "-y""',
+				],
+				windowsVerbatimArguments: true,
+			});
+
 			const proc = createMockProcess();
 			mockSpawn.mockReturnValue(proc);
 
@@ -1768,9 +1786,14 @@ describe("rewordCommit", () => {
 			await promise;
 
 			expect(mockSpawn).toHaveBeenCalledWith(
-				"git-sc",
-				["--reword", "abc1234", "-y"],
-				expect.objectContaining({ shell: true, windowsHide: true }),
+				"C:\\Windows\\System32\\cmd.exe",
+				["/d", "/s", "/c", '""C:\\bin\\git-sc.CMD" "--reword" "abc1234" "-y""'],
+				expect.objectContaining({
+					shell: false,
+					windowsVerbatimArguments: true,
+					windowsHide: true,
+					detached: false,
+				}),
 			);
 		} finally {
 			if (originalPlatform) {
@@ -1779,7 +1802,9 @@ describe("rewordCommit", () => {
 		}
 	});
 
-	it("should spawn git-sc with shell:false on non-win32 platform for reword", async () => {
+	it("should spawn git-sc reword with shell:false + detached:true on POSIX to enable process-group kill", async () => {
+		// POSIX では reword でも detached:true でプロセスグループを作り、
+		// キャンセル時に git-sc の子孫プロセス (git 等) ごと終了させる。
 		mockExecFileSync.mockReturnValue(
 			"abc1234\x00feat: test\x001h ago\x00Author\x00",
 		);
@@ -1808,7 +1833,12 @@ describe("rewordCommit", () => {
 			expect(mockSpawn).toHaveBeenCalledWith(
 				"git-sc",
 				["--reword", "abc1234", "-y"],
-				expect.objectContaining({ shell: false, windowsHide: true }),
+				expect.objectContaining({
+					shell: false,
+					detached: true,
+					windowsVerbatimArguments: false,
+					windowsHide: true,
+				}),
 			);
 		} finally {
 			if (originalPlatform) {

@@ -324,4 +324,51 @@ describe("terminateProcessForCancellation", () => {
 			restorePlatform();
 		}
 	});
+
+	it("POSIX では負の PID でプロセスグループへ SIGTERM を送る", () => {
+		// runGitSc / rewordCommit は POSIX で detached:true で spawn しており、
+		// 子プロセスがプロセスグループのリーダーになっている。これに対して
+		// 負の PID で kill するとグループ全体に SIGTERM が送られ、git-sc が
+		// 起動した git 等の孫プロセスもまとめて終了させられる。
+		setPlatform("linux");
+		const originalKill = globalThis.process.kill;
+		const killSpy = vi.fn();
+		globalThis.process.kill = killSpy as typeof globalThis.process.kill;
+		try {
+			const child = createMockProcess();
+			Object.defineProperty(child, "pid", { value: 9999, configurable: true });
+
+			terminateProcessForCancellation(child, outputChannel as never);
+
+			expect(killSpy).toHaveBeenCalledWith(-9999, "SIGTERM");
+			expect(child.kill).not.toHaveBeenCalled();
+		} finally {
+			globalThis.process.kill = originalKill;
+			restorePlatform();
+		}
+	});
+
+	it("POSIX のグループ kill が失敗したら単体 PID にフォールバックする", () => {
+		// detached:true で spawn したつもりがセッションリーダー化に失敗していた等で
+		// 負の PID への kill が ESRCH を返した場合、子プロセス本体への kill にフォールバックして
+		// 少なくとも直接の子プロセスは確実に終了させられることを担保する。
+		setPlatform("linux");
+		const originalKill = globalThis.process.kill;
+		const killSpy = vi.fn(() => {
+			throw new Error("kill ESRCH");
+		});
+		globalThis.process.kill = killSpy as typeof globalThis.process.kill;
+		try {
+			const child = createMockProcess();
+			Object.defineProperty(child, "pid", { value: 4321, configurable: true });
+
+			terminateProcessForCancellation(child, outputChannel as never);
+
+			expect(killSpy).toHaveBeenCalledWith(-4321, "SIGTERM");
+			expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+		} finally {
+			globalThis.process.kill = originalKill;
+			restorePlatform();
+		}
+	});
 });

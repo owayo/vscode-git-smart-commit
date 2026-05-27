@@ -111,18 +111,21 @@ export async function runGitSc(
 
 				progress.report({ message: "Generating commit message..." });
 
-				// POSIX では shell: false で起動することで process.kill が
-				// 中継シェルではなく実際の git-sc プロセスへ届くようにする。
-				// PATH は絶対パス要素だけを走査し、空要素・"."・相対要素による
-				// cwd ハイジャック (悪意ある repo 直下の git-sc を優先実行する攻撃) を防ぐ。
-				// Windows の .cmd/.bat の場合のみ Node.js の CVE-2024-27980 対策で shell: true を使う。
-				// shell: true 利用時はキャンセルで taskkill /T /F により
-				// 中継シェルもろともプロセスツリーを終了させる。
-				const resolved = resolveSpawnCommand("git-sc");
+				// 安全な spawn のための解決:
+				// - PATH は絶対パス要素だけを走査し、空要素・"."・相対要素による cwd ハイジャック
+				//   (悪意ある repo 直下の git-sc を優先実行する攻撃) を防ぐ
+				// - POSIX: shell: false で起動し、detached: true でプロセスグループを作って
+				//   キャンセル時に子孫プロセス (git-sc が起動する git 等) も含めて終了させる
+				// - Windows .exe 等: shell: false で直接起動
+				// - Windows .cmd/.bat: cmd.exe を System32 から絶対パスで解決し、
+				//   windowsVerbatimArguments: true で生 command line を渡す。各引数は
+				//   CommandLineToArgvW 互換で自前 quote 済みなので Node.js DEP0190 の
+				//   "shell:true + args の unsafe な空白連結" を回避できる
+				const resolved = resolveSpawnCommand("git-sc", args);
 				if (!resolved) {
 					// PATH に安全な絶対パスが見つからない場合は spawn せず、
-					// インストール案内へフォールバックする（フォールバック起動は
-					// cwd ハイジャックが残るため避ける）
+					// インストール案内へフォールバックする (フォールバック起動は
+					// cwd ハイジャックが残るため避ける)
 					outputChannel.appendLine(
 						"\n❌ git-sc not found in PATH. Aborting before unsafe spawn.",
 					);
@@ -130,10 +133,12 @@ export async function runGitSc(
 					rejectOnce(new Error("git-sc command not found in PATH"));
 					return;
 				}
-				const { command, useShell } = resolved;
-				const process = spawn(command, args, {
+				const isPosix = globalThis.process.platform !== "win32";
+				const process = spawn(resolved.command, resolved.args, {
 					cwd: workspaceRoot,
-					shell: useShell,
+					shell: false,
+					detached: isPosix,
+					windowsVerbatimArguments: resolved.windowsVerbatimArguments,
 					env: { ...globalThis.process.env, FORCE_COLOR: "0" },
 					windowsHide: true,
 				});
@@ -222,7 +227,9 @@ export async function runGitSc(
 					isCancelled = true;
 					terminateProcessForCancellation(process, outputChannel);
 					outputChannel.appendLine("\n⚠️ git-sc cancelled by user");
-					resolveOnce();
+					// resolveOnce() はここでは呼ばない。close イベントで
+					// プロセス (および POSIX ではプロセスグループ) の終了を確認してから
+					// resolve することで、終了未確定のまま VS Code に成功扱いされるのを避ける。
 				});
 			});
 		},

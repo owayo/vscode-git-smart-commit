@@ -577,7 +577,7 @@ describe("resolveSpawnCommand", () => {
 		});
 	}
 
-	it("POSIX では絶対パス + shell:false を返す", () => {
+	it("POSIX では絶対パス + 引数パススルー + windowsVerbatimArguments:false を返す", () => {
 		setPlatform("darwin");
 		globalThis.process.env.PATH = "/usr/local/bin:/usr/bin";
 		mockAccessSync.mockImplementation((p: unknown) => {
@@ -587,13 +587,31 @@ describe("resolveSpawnCommand", () => {
 			throw new Error("not executable");
 		});
 
-		expect(resolveSpawnCommand("git-sc")).toEqual({
+		expect(resolveSpawnCommand("git-sc", ["-a", "-y"])).toEqual({
 			command: "/usr/local/bin/git-sc",
-			useShell: false,
+			args: ["-a", "-y"],
+			windowsVerbatimArguments: false,
 		});
 	});
 
-	it("POSIX では .cmd 名でも shell:false を返す", () => {
+	it("POSIX で args が省略された場合は空配列を返す", () => {
+		setPlatform("darwin");
+		globalThis.process.env.PATH = "/usr/local/bin";
+		mockAccessSync.mockImplementation((p: unknown) => {
+			if (p === "/usr/local/bin/git-sc") {
+				return;
+			}
+			throw new Error("not executable");
+		});
+
+		expect(resolveSpawnCommand("git-sc")).toEqual({
+			command: "/usr/local/bin/git-sc",
+			args: [],
+			windowsVerbatimArguments: false,
+		});
+	});
+
+	it("POSIX では .cmd 名でも cmd.exe を介さず絶対パスをそのまま返す", () => {
 		setPlatform("darwin");
 		globalThis.process.env.PATH = "/usr/local/bin";
 		mockAccessSync.mockImplementation((p: unknown) => {
@@ -603,9 +621,10 @@ describe("resolveSpawnCommand", () => {
 			throw new Error("not executable");
 		});
 
-		expect(resolveSpawnCommand("git-sc.cmd")).toEqual({
+		expect(resolveSpawnCommand("git-sc.cmd", ["-y"])).toEqual({
 			command: "/usr/local/bin/git-sc.cmd",
-			useShell: false,
+			args: ["-y"],
+			windowsVerbatimArguments: false,
 		});
 	});
 
@@ -616,27 +635,40 @@ describe("resolveSpawnCommand", () => {
 			throw new Error("not executable");
 		});
 
-		expect(resolveSpawnCommand("git-sc")).toBeNull();
+		expect(resolveSpawnCommand("git-sc", ["-y"])).toBeNull();
 	});
 
-	it("Windows で .CMD が見つかった場合は絶対パス + shell:true を返す", () => {
+	it("Windows で .CMD が見つかった場合は cmd.exe 経由で安全に起動する形を返す", () => {
+		// Node.js DEP0190 (shell:true + args の unsafe な空白連結) を避けるため、
+		// cmd.exe を System32 から絶対パスで解決し windowsVerbatimArguments:true を返す。
+		// 各引数は CommandLineToArgvW 互換で自前 quote 済み。
 		setPlatform("win32");
 		globalThis.process.env.PATH = "C:\\Program Files\\Git\\cmd";
 		globalThis.process.env.PATHEXT = ".EXE;.CMD";
+		globalThis.process.env.SystemRoot = "C:\\Windows";
 		mockStatSync.mockImplementation((p: unknown) => {
 			if (p === "C:\\Program Files\\Git\\cmd\\git-sc.CMD") {
+				return mockFileStat(true);
+			}
+			if (p === "C:\\Windows\\System32\\cmd.exe") {
 				return mockFileStat(true);
 			}
 			throw new Error("not found");
 		});
 
-		expect(resolveSpawnCommand("git-sc")).toEqual({
-			command: "C:\\Program Files\\Git\\cmd\\git-sc.CMD",
-			useShell: true,
+		expect(resolveSpawnCommand("git-sc", ["-y"])).toEqual({
+			command: "C:\\Windows\\System32\\cmd.exe",
+			args: [
+				"/d",
+				"/s",
+				"/c",
+				'""C:\\Program Files\\Git\\cmd\\git-sc.CMD" "-y""',
+			],
+			windowsVerbatimArguments: true,
 		});
 	});
 
-	it("Windows で .EXE が見つかった場合は絶対パス + shell:false を返す", () => {
+	it("Windows で .EXE が見つかった場合は絶対パス + windowsVerbatimArguments:false を返す", () => {
 		setPlatform("win32");
 		globalThis.process.env.PATH = "C:\\bin";
 		globalThis.process.env.PATHEXT = ".EXE;.CMD";
@@ -647,26 +679,80 @@ describe("resolveSpawnCommand", () => {
 			throw new Error("not found");
 		});
 
-		expect(resolveSpawnCommand("git-sc")).toEqual({
+		expect(resolveSpawnCommand("git-sc", ["-y"])).toEqual({
 			command: "C:\\bin\\git-sc.EXE",
-			useShell: false,
+			args: ["-y"],
+			windowsVerbatimArguments: false,
 		});
 	});
 
-	it("Windows で .BAT が見つかった場合は shell:true を返す", () => {
+	it("Windows で .BAT が見つかった場合も cmd.exe 経由で起動する形を返す", () => {
 		setPlatform("win32");
 		globalThis.process.env.PATH = "C:\\bin";
 		globalThis.process.env.PATHEXT = ".BAT";
+		globalThis.process.env.SystemRoot = "C:\\Windows";
 		mockStatSync.mockImplementation((p: unknown) => {
 			if (p === "C:\\bin\\git-sc.BAT") {
+				return mockFileStat(true);
+			}
+			if (p === "C:\\Windows\\System32\\cmd.exe") {
 				return mockFileStat(true);
 			}
 			throw new Error("not found");
 		});
 
 		expect(resolveSpawnCommand("git-sc")).toEqual({
-			command: "C:\\bin\\git-sc.BAT",
-			useShell: true,
+			command: "C:\\Windows\\System32\\cmd.exe",
+			args: ["/d", "/s", "/c", '""C:\\bin\\git-sc.BAT""'],
+			windowsVerbatimArguments: true,
+		});
+	});
+
+	it("Windows で .CMD は見つかるが cmd.exe を解決できない場合は null を返す", () => {
+		setPlatform("win32");
+		globalThis.process.env.PATH = "C:\\bin";
+		globalThis.process.env.PATHEXT = ".CMD";
+		delete globalThis.process.env.SystemRoot;
+		delete globalThis.process.env.WINDIR;
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\bin\\git-sc.CMD") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		expect(resolveSpawnCommand("git-sc", ["-y"])).toBeNull();
+	});
+
+	it("Windows の cmd.exe 経由起動では空白入りパスを正しく quote する", () => {
+		// `C:\Program Files\...` のように空白を含む PATH は実環境で頻出する。
+		// 自前 quote で各 token を `"` で囲み、cmd.exe /s 仕様に合わせて全体をさらに
+		// `"` で囲んだ command line になることを保証する。
+		setPlatform("win32");
+		globalThis.process.env.PATH = "C:\\Program Files\\Git Smart Commit\\bin";
+		globalThis.process.env.PATHEXT = ".CMD";
+		globalThis.process.env.SystemRoot = "C:\\Windows";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (
+				p === "C:\\Program Files\\Git Smart Commit\\bin\\git-sc.CMD" ||
+				p === "C:\\Windows\\System32\\cmd.exe"
+			) {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		const result = resolveSpawnCommand("git-sc", ["-a", "-y"]);
+
+		expect(result).toEqual({
+			command: "C:\\Windows\\System32\\cmd.exe",
+			args: [
+				"/d",
+				"/s",
+				"/c",
+				'""C:\\Program Files\\Git Smart Commit\\bin\\git-sc.CMD" "-a" "-y""',
+			],
+			windowsVerbatimArguments: true,
 		});
 	});
 
@@ -685,5 +771,25 @@ describe("resolveSpawnCommand", () => {
 		setPlatform("win32");
 		globalThis.process.env.PATH = "";
 		expect(resolveSpawnCommand("git-sc")).toBeNull();
+	});
+
+	it("Windows の cmd 経由起動で改行や NUL を含む引数は例外を投げる", () => {
+		setPlatform("win32");
+		globalThis.process.env.PATH = "C:\\bin";
+		globalThis.process.env.PATHEXT = ".CMD";
+		globalThis.process.env.SystemRoot = "C:\\Windows";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (
+				p === "C:\\bin\\git-sc.CMD" ||
+				p === "C:\\Windows\\System32\\cmd.exe"
+			) {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		expect(() => resolveSpawnCommand("git-sc", ["bad\narg"])).toThrow(
+			/unsupported control characters/,
+		);
 	});
 });
