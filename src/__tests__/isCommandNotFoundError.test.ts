@@ -96,4 +96,25 @@ describe("isCommandNotFoundError", () => {
 	it("returns false for empty error message", () => {
 		expect(isCommandNotFoundError("")).toBe(false);
 	});
+
+	it("returns true when not-found message appears amid multi-line stderr", () => {
+		// 実環境では stderr に複数行のメッセージ（ヘッダや改行）が混じる場合があるため、
+		// マッチパターンが行頭・行末に限定されず本文中で検出できることを保証する
+		const multiLineStderr = [
+			"Some shell warning",
+			"bash: git-sc: command not found",
+			"Last login: yesterday",
+		].join("\n");
+		expect(isCommandNotFoundError(multiLineStderr)).toBe(true);
+	});
+
+	it("returns true when Windows recognition error is preceded by other output", () => {
+		const multiLineStderr = [
+			"Microsoft Windows [Version 10.0.0]",
+			"(c) Microsoft Corporation. All rights reserved.",
+			"'git-sc' is not recognized as an internal or external command,",
+			"operable program or batch file.",
+		].join("\r\n");
+		expect(isCommandNotFoundError(multiLineStderr)).toBe(true);
+	});
 });

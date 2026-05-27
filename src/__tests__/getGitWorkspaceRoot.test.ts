@@ -219,4 +219,44 @@ describe("getGitWorkspaceRoot", () => {
 		expect(workspaceRoot).toBe("/workspace/repo");
 		expect(mockExecFileSync).toHaveBeenCalledTimes(2);
 	});
+
+	it("should cache resolved git executable across multiple folders", () => {
+		// 複数フォルダを連続して処理する際、resolveNativeExecutableOnPath は
+		// 最初の有効な呼び出し時に一度だけ実行され、以後は使い回されること。
+		// `resolveNativeExecutableOnPath` は I/O を伴うため、ループ毎に呼び直すと
+		// 大量フォルダのワークスペースで余分なファイルシステムアクセスが走る。
+		mockExecFileSync
+			.mockImplementationOnce(() => {
+				throw new Error("fatal: not a git repository");
+			})
+			.mockImplementationOnce(() => {
+				throw new Error("fatal: not a git repository");
+			})
+			.mockReturnValueOnce("/workspace/repo\n");
+
+		const workspaceRoot = getGitWorkspaceRoot([
+			{ uri: { fsPath: "/workspace/plain-a" } },
+			{ uri: { fsPath: "/workspace/plain-b" } },
+			{ uri: { fsPath: "/workspace/repo" } },
+		] as never);
+
+		expect(workspaceRoot).toBe("/workspace/repo");
+		expect(mockResolveNativeExecutableOnPath).toHaveBeenCalledTimes(1);
+		expect(mockExecFileSync).toHaveBeenCalledTimes(3);
+	});
+
+	it("should rethrow when safe git executable cannot be resolved during multi-folder iteration", () => {
+		// 1 フォルダ目では Git 管理外を返してスキップしようとするが、
+		// 実は git 実行ファイル自体が PATH 上にない場合、resolveGitExecutable が
+		// 例外をスローする。これは ENOENT として伝搬し、後続フォルダで再試行しない。
+		mockResolveNativeExecutableOnPath.mockReturnValue(null);
+
+		expect(() =>
+			getGitWorkspaceRoot([
+				{ uri: { fsPath: "/workspace/plain-a" } },
+				{ uri: { fsPath: "/workspace/repo" } },
+			] as never),
+		).toThrow("spawn git ENOENT");
+		expect(mockExecFileSync).not.toHaveBeenCalled();
+	});
 });

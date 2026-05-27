@@ -73,6 +73,11 @@ src/
 
 ## Recent Maintenance Notes
 
+- @types/node updated to 25.9.1.
+- Vitest updated to 4.1.7.
+- Added regression tests covering `getGitWorkspaceRoot` で `resolveNativeExecutableOnPath("git")` が複数フォルダ走査でも一度しか呼ばれないキャッシュ挙動と、多フォルダ列挙中に safe git executable が解決不能なら直ちに ENOENT を伝搬する挙動。
+- Added regression tests for `isCommandNotFoundError` で複数行 stderr (POSIX のヘッダ + bash "command not found" 行 / Windows の "is not recognized" 行) の中間にパターンが現れても検出できること。
+- Added regression test for `terminateProcessForCancellation` で POSIX (linux/darwin) 上で `child.pid` が未定義の場合でも `child.kill("SIGTERM")` の呼び出しを試みること。
 - Fixed Windows cancellation fallback so unresolved, failed-to-start, or non-zero-exiting `taskkill` now logs a warning and still sends `SIGTERM` to the direct child process.
 - Added regression tests for `taskkill` resolution/startup/exit fallback paths and for avoiding duplicate SIGTERM fallback when `error` and `close` both fire.
 - @types/node updated to 25.8.0.

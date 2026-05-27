@@ -303,4 +303,25 @@ describe("terminateProcessForCancellation", () => {
 			restorePlatform();
 		}
 	});
+
+	it("POSIX で child.pid が未定義でも SIGTERM の送信を試みる", () => {
+		// POSIX では Windows のように pid を必要としないが、子プロセスがまだ pid を
+		// 取得できていない極小レアケース (spawn 直後の fork 失敗等) でも
+		// kill 呼び出し自体は試行し、Node 側に NOP 判定を委ねる挙動を担保する。
+		setPlatform("linux");
+		try {
+			const child = createMockProcess();
+			Object.defineProperty(child, "pid", {
+				value: undefined,
+				configurable: true,
+			});
+
+			terminateProcessForCancellation(child, outputChannel as never);
+
+			expect(mockSpawn).not.toHaveBeenCalled();
+			expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+		} finally {
+			restorePlatform();
+		}
+	});
 });
