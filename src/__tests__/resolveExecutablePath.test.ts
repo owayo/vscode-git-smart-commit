@@ -529,6 +529,24 @@ describe("resolveExecutableOnPath", () => {
 		);
 	});
 
+	it("Windows の System32 実行ファイルを小文字 windir から絶対パスで解決する", () => {
+		setPlatform("win32");
+		delete globalThis.process.env.SystemRoot;
+		delete globalThis.process.env.WINDIR;
+		delete globalThis.process.env.systemroot;
+		globalThis.process.env.windir = "C:\\Windows";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\Windows\\System32\\taskkill.exe") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		expect(resolveWindowsSystemExecutable("taskkill")).toBe(
+			"C:\\Windows\\System32\\taskkill.exe",
+		);
+	});
+
 	it("Windows の System32 実行ファイル解決は相対 SystemRoot を拒否する", () => {
 		setPlatform("win32");
 		globalThis.process.env.SystemRoot = "Windows";

@@ -78,6 +78,8 @@ src/
 
 ## Recent Maintenance Notes
 
+- Added `tmp@<0.2.6` override in `pnpm-workspace.yaml` so `@vscode/vsce` no longer pulls vulnerable `tmp` 0.2.5 and `pnpm audit --audit-level moderate` reports no known vulnerabilities.
+- Added regression test for lowercase Windows `windir` fallback during System32 command resolution.
 - @types/node updated to 25.9.1.
 - Vitest updated to 4.1.7.
 - **Security fix (Node.js DEP0190 対応)**: Windows `.cmd` / `.bat` 起動を `shell: true` + `args` 配列の組み合わせから cmd.exe 経由起動 (`windowsVerbatimArguments: true` + 自前 quote) に変更。Node.js DEP0190 は `shell: true` + `args` の組み合わせが「値を escape せず空白連結する」ため shell injection のリスクがあるとして runtime deprecation 化されており、空白入り PATH や cmd.exe メタ文字 (`&` `|` `<` `>` `^`) を含む引数で injection の余地が残っていた。`resolveSpawnCommand` の API を `(name, args)` を受け取り `{ command, args, windowsVerbatimArguments }` を返す形に変更し、`.cmd` / `.bat` の場合だけ `SystemRoot\System32\cmd.exe` を絶対パスで解決して `["/d", "/s", "/c", "\"resolved\" \"arg1\" ..."]` に組み立てる。各引数は CommandLineToArgvW 互換で自前 quote する。
