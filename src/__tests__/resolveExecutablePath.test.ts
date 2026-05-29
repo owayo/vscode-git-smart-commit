@@ -774,6 +774,42 @@ describe("resolveSpawnCommand", () => {
 		});
 	});
 
+	it("Windows の cmd.exe 経由起動では cmd メタ文字を含む引数も個別に quote する", () => {
+		// & | < > ^ を含む引数が素の command line に露出すると cmd.exe が制御記号として解釈する。
+		// .cmd/.bat 経由では各引数を必ず二重引用符で囲み、1 つの引数として渡すことを固定する。
+		setPlatform("win32");
+		globalThis.process.env.PATH = "C:\\bin";
+		globalThis.process.env.PATHEXT = ".CMD";
+		globalThis.process.env.SystemRoot = "C:\\Windows";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (
+				p === "C:\\bin\\git-sc.CMD" ||
+				p === "C:\\Windows\\System32\\cmd.exe"
+			) {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		const result = resolveSpawnCommand("git-sc", [
+			"value&safe",
+			"pipe|safe",
+			"redir<safe>",
+			"caret^safe",
+		]);
+
+		expect(result).toEqual({
+			command: "C:\\Windows\\System32\\cmd.exe",
+			args: [
+				"/d",
+				"/s",
+				"/c",
+				'""C:\\bin\\git-sc.CMD" "value&safe" "pipe|safe" "redir<safe>" "caret^safe""',
+			],
+			windowsVerbatimArguments: true,
+		});
+	});
+
 	it("Windows で見つからない場合は null を返す（cwd ハイジャック対策、フォールバック spawn は行わない）", () => {
 		setPlatform("win32");
 		globalThis.process.env.PATH = "C:\\bin";

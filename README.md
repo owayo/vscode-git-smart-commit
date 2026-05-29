@@ -173,7 +173,7 @@ pnpm audit --audit-level moderate
 
 dev 依存の推移依存には `pnpm-workspace.yaml` の `overrides` と lockfile 更新でパッチ済みバージョンを明示し、`pnpm audit --audit-level moderate` が通る状態を維持します。`@vscode/vsce` 経由の `tmp` も、path traversal 脆弱性が修正された `0.2.6` 以上へ固定します。
 
-ユニットテストには、`extension.ts` で登録される各コマンドハンドラのオプション引き渡し、内部コマンド失敗時の例外抑止、キャンセル時の POSIX `SIGTERM` と Windows `taskkill` 分岐、`taskkill` 失敗時の `SIGTERM` フォールバック、`PATH` の空要素・相対要素・同名ディレクトリを除外する実行ファイル解決、Windows の `Path` / 小文字 `path` 環境変数フォールバック、安全な native `git` 解決、直接指定された `.CMD` を native 実行ファイルとして返さない境界値、拡張子付きコマンド名へ `PATHEXT` を連結しない回帰ケース、`taskkill` の絶対パス解決と `WINDIR` / 小文字 `systemroot` / 小文字 `windir` フォールバック、Git ルートパス末尾の空白保持、失敗ログに関する回帰ケースも含まれます。
+ユニットテストには、`extension.ts` で登録される各コマンドハンドラのオプション引き渡し、内部コマンド失敗時の例外抑止、キャンセル時の POSIX `SIGTERM` と Windows `taskkill` 分岐、`taskkill` 失敗時の `SIGTERM` フォールバック、`PATH` の空要素・相対要素・同名ディレクトリを除外する実行ファイル解決、Windows の `Path` / 小文字 `path` 環境変数フォールバック、安全な native `git` 解決、直接指定された `.CMD` を native 実行ファイルとして返さない境界値、拡張子付きコマンド名へ `PATHEXT` を連結しない回帰ケース、`.cmd` / `.bat` 起動時に cmd.exe メタ文字を含む引数を個別 quote する回帰ケース、`taskkill` の絶対パス解決と `WINDIR` / 小文字 `systemroot` / 小文字 `windir` フォールバック、Git ルートパス末尾の空白保持、失敗ログに関する回帰ケースも含まれます。
 
 ### デバッグ
 

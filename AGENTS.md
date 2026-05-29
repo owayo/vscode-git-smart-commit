@@ -78,6 +78,7 @@ src/
 
 ## Recent Maintenance Notes
 
+- Added regression test for Windows `.cmd` / `.bat` launch command line quoting when arguments include cmd.exe metacharacters (`&`, `|`, `<`, `>`, `^`).
 - Added `tmp@<0.2.6` override in `pnpm-workspace.yaml` so `@vscode/vsce` no longer pulls vulnerable `tmp` 0.2.5 and `pnpm audit --audit-level moderate` reports no known vulnerabilities.
 - Added regression test for lowercase Windows `windir` fallback during System32 command resolution.
 - @types/node updated to 25.9.1.
