@@ -1,3 +1,4 @@
+import type { ChildProcess } from "node:child_process";
 import { spawn } from "child_process";
 import * as vscode from "vscode";
 import { isCommandNotFoundError } from "./isCommandNotFoundError";
@@ -6,6 +7,30 @@ import { terminateProcessForCancellation } from "./terminateProcessForCancellati
 
 const GIT_SC_INSTALLATION_URL =
 	"https://github.com/owayo/git-smart-commit#installation";
+
+/**
+ * 実行中の git-sc 子プロセス集合。`close` / `error` で除去する。
+ * 拡張機能の deactivate (VS Code reload / 終了 / 拡張停止) 時に
+ * {@link terminateActiveGitScProcesses} から参照し、取り残しを防ぐ。
+ */
+const activeGitScProcesses = new Set<ChildProcess>();
+
+/**
+ * 現在実行中の git-sc 子プロセスをすべて終了させる。
+ *
+ * 子プロセスはキャンセル時にしか kill されないため、`deactivate()` から本関数を呼ばないと
+ * VS Code の reload / 終了 / 拡張停止のタイミングで実行中の `git-sc` が孤児として残る。
+ * 特に POSIX では `detached: true` で起動しており親プロセス終了では連動停止しないため、
+ * プロセスグループごと終了させる必要がある。
+ */
+export function terminateActiveGitScProcesses(
+	outputChannel: vscode.OutputChannel,
+): void {
+	for (const child of activeGitScProcesses) {
+		terminateProcessForCancellation(child, outputChannel);
+	}
+	activeGitScProcesses.clear();
+}
 
 /**
  * `git-sc` が PATH 上に見つからない場合に、インストール案内付きのエラー通知を表示する。
@@ -140,6 +165,8 @@ export async function spawnGitScWithProgress({
 					env: { ...globalThis.process.env, FORCE_COLOR: "0" },
 					windowsHide: true,
 				});
+				// deactivate 時の後始末対象として登録し、close/error で除去する。
+				activeGitScProcesses.add(process);
 
 				let stdout = "";
 				let stderr = "";
@@ -157,6 +184,8 @@ export async function spawnGitScWithProgress({
 				});
 
 				process.on("close", (code: number | null) => {
+					// プロセス終了が確定したので後始末対象から除去する
+					activeGitScProcesses.delete(process);
 					// 既に error / cancel 等で確定済みの場合は何もしない
 					// （POSIX では spawn 失敗時に error → close が連続発火するため、
 					// UI 通知や outputChannel 出力の二重化を防ぐ）
@@ -200,6 +229,8 @@ export async function spawnGitScWithProgress({
 				});
 
 				process.on("error", (err: Error) => {
+					// spawn 失敗等で終了が確定したので後始末対象から除去する
+					activeGitScProcesses.delete(process);
 					// 既に close / cancel 等で確定済みの場合は何もしない
 					if (settled) {
 						return;

@@ -22,6 +22,7 @@ const mockGetConfiguration = vi.fn(() => ({
 const mockOnDidChangeConfiguration = vi.fn();
 const mockRunGitSc = vi.fn();
 const mockRewordCommit = vi.fn();
+const mockTerminateActiveGitScProcesses = vi.fn();
 
 vi.mock("vscode", () => ({
 	window: {
@@ -59,6 +60,11 @@ vi.mock("../commands/runGitSc", () => ({
 
 vi.mock("../commands/rewordCommit", () => ({
 	rewordCommit: (...args: unknown[]) => mockRewordCommit(...args),
+}));
+
+vi.mock("../commands/spawnGitScProcess", () => ({
+	terminateActiveGitScProcesses: (...args: unknown[]) =>
+		mockTerminateActiveGitScProcesses(...args),
 }));
 
 describe("extension", () => {
@@ -269,6 +275,22 @@ describe("extension", () => {
 		deactivate();
 
 		expect(mockChannel.dispose).toHaveBeenCalled();
+	});
+
+	it("should terminate active git-sc processes on deactivate", () => {
+		const mockChannel = {
+			show: vi.fn(),
+			appendLine: vi.fn(),
+			append: vi.fn(),
+			dispose: vi.fn(),
+		};
+		mockCreateOutputChannel.mockReturnValueOnce(mockChannel);
+
+		activate(mockContext);
+		deactivate();
+
+		// 実行中の git-sc を取り残さないよう、outputChannel dispose 前に終了処理を呼ぶ
+		expect(mockTerminateActiveGitScProcesses).toHaveBeenCalledWith(mockChannel);
 	});
 
 	it("should register command handlers that call runGitSc with correct options", () => {

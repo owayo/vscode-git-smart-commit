@@ -49,6 +49,27 @@ function isExecutableFile(candidate: string): boolean {
 }
 
 /**
+ * 「完全修飾された絶対パス」かどうかを判定する。
+ *
+ * Windows の `path.win32.isAbsolute` は `\Tools` のような drive-relative パス
+ * (先頭が単一セパレータ) も true を返すが、これは実行時の current drive に依存して
+ * 解決されるため fully-qualified ではない。`spawn(..., { cwd: workspaceRoot })` の
+ * cwd ドライブ次第で別ドライブ上の実行ファイル (`D:\Tools\git-sc.CMD` 等) へ寄る余地が
+ * あり、cwd ハイジャック対策の「絶対パスのみ許可」という前提を破る。
+ * そこで Windows では drive-qualified (`C:\` / `C:/`) か UNC (`\\` / `//`) のみを許可する。
+ * POSIX の `path.posix.isAbsolute` (先頭 `/`) は元から fully-qualified なのでそのまま使う。
+ */
+function isFullyQualifiedAbsolutePath(
+	candidate: string,
+	isWindows: boolean,
+): boolean {
+	if (!isWindows) {
+		return path.posix.isAbsolute(candidate);
+	}
+	return /^[a-zA-Z]:[\\/]/.test(candidate) || /^[\\/][\\/]/.test(candidate);
+}
+
+/**
  * PATH 環境変数を走査して指定コマンドの絶対パスを返す。
  *
  * Windows の `CreateProcess` は bare command を起動する際にカレントディレクトリを
@@ -84,10 +105,11 @@ export function resolveExecutableOnPath(name: string): string | null {
 
 	for (const rawDir of pathDirs) {
 		const dir = isWindows ? rawDir.trim() : rawDir;
-		// 絶対パスのみ許可する（空文字列・"."・"./"・".\\"・"bin"・".\tools"・"C:tools" 等は全て除外）。
-		// 相対要素を許すと `spawn(..., { cwd: workspaceRoot })` と合わさって
-		// repo 配下のバイナリが起動する余地を残してしまうため、ここで完全に弾く。
-		if (!dir || !pathModule.isAbsolute(dir)) {
+		// 完全修飾された絶対パスのみ許可する（空文字列・"."・"./"・".\\"・"bin"・".\tools"・
+		// "C:tools" や、Windows の drive-relative な "\tools" 等は全て除外）。
+		// 相対要素や drive-relative 要素を許すと `spawn(..., { cwd: workspaceRoot })` と
+		// 合わさって repo 配下や別ドライブのバイナリが起動する余地を残すため、ここで完全に弾く。
+		if (!dir || !isFullyQualifiedAbsolutePath(dir, isWindows)) {
 			continue;
 		}
 
@@ -152,7 +174,8 @@ export function resolveNativeExecutableOnPath(name: string): string | null {
 
 	for (const rawDir of pathDirs) {
 		const dir = rawDir.trim();
-		if (!dir || !path.win32.isAbsolute(dir)) {
+		// drive-relative な "\tools" 等は current drive 依存で fully-qualified ではないため除外する。
+		if (!dir || !isFullyQualifiedAbsolutePath(dir, true)) {
 			continue;
 		}
 
@@ -180,7 +203,7 @@ export function resolveWindowsSystemExecutable(name: string): string | null {
 
 	const systemRoot =
 		getWindowsEnvValue("SystemRoot") || getWindowsEnvValue("WINDIR");
-	if (!systemRoot || !path.win32.isAbsolute(systemRoot)) {
+	if (!systemRoot || !isFullyQualifiedAbsolutePath(systemRoot, true)) {
 		return null;
 	}
 
@@ -205,6 +228,17 @@ function escapeCmdArgument(value: string): string {
 	if (/[\r\n\x00]/.test(value)) {
 		throw new Error(
 			`Argument contains unsupported control characters: ${JSON.stringify(value)}`,
+		);
+	}
+
+	// cmd.exe は二重引用符の内側でも `%VAR%` を環境変数展開し、コマンドライン上で `%` を
+	// 確実にエスケープする手段が存在しない (`%%` のエスケープはバッチファイル内でのみ有効)。
+	// `%` を含む実行ファイルパス/引数をそのまま渡すと、展開後の別パス・別値を実行してしまう
+	// 恐れがあるため、`.cmd`/`.bat` の cmd.exe 経由起動経路では `%` を拒否して誤実行を防ぐ。
+	// git-sc の実引数 (-a/-b/-y/--reword/<hex hash>) は `%` を含まないため通常は発生しない。
+	if (value.includes("%")) {
+		throw new Error(
+			`Argument contains '%' which cmd.exe would expand: ${JSON.stringify(value)}`,
 		);
 	}
 

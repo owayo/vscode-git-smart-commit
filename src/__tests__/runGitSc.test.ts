@@ -1532,4 +1532,25 @@ describe("runGitSc", () => {
 			calls.some((c) => c.includes("Git refresh failed: git.refresh disabled")),
 		).toBe(true);
 	});
+
+	it("terminateActiveGitScProcesses は実行中の git-sc プロセスを終了させる (deactivate 用)", async () => {
+		const { terminateActiveGitScProcesses } = await import(
+			"../commands/spawnGitScProcess"
+		);
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		// spawn は withProgress コールバック内で同期的に行われ、active set に登録される
+		const promise = runGitSc(mockOutputChannel as never, { autoConfirm: true });
+
+		// deactivate 相当: 実行中プロセスを一括終了する
+		terminateActiveGitScProcesses(mockOutputChannel as never);
+		// POSIX (テストホスト) では pid 未定義のためプロセスグループ kill が
+		// child.kill("SIGTERM") にフォールバックする
+		expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
+
+		// pending な promise を解決して後始末する
+		proc.__emit("close", 0);
+		await promise;
+	});
 });

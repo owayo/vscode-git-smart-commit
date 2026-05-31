@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { rewordCommit } from "./commands/rewordCommit";
 import { runGitSc } from "./commands/runGitSc";
+import { terminateActiveGitScProcesses } from "./commands/spawnGitScProcess";
 
 let statusBarItem: vscode.StatusBarItem | undefined;
 let outputChannel: vscode.OutputChannel;
@@ -126,5 +127,11 @@ function updateStatusBarVisibility(): void {
 }
 
 export function deactivate(): void {
+	// VS Code の reload / 終了 / 拡張停止時に、実行中の git-sc とその子孫プロセスを
+	// 取り残さないよう終了させる。outputChannel は cleanup のログ出力先になるため
+	// dispose する前に渡す。
+	if (outputChannel) {
+		terminateActiveGitScProcesses(outputChannel);
+	}
 	outputChannel?.dispose();
 }

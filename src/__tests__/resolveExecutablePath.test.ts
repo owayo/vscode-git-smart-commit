@@ -481,6 +481,56 @@ describe("resolveExecutableOnPath", () => {
 		expect(resolveNativeExecutableOnPath("git.CMD")).toBeNull();
 	});
 
+	it("resolveExecutableOnPath は Windows の drive-relative な PATH 要素 (\\Tools) を除外する", () => {
+		// path.win32.isAbsolute("\\Tools") は true だが drive-relative であり、実行時の
+		// current drive 依存で fully-qualified ではないため、絶対パスとして拾ってはならない。
+		setPlatform("win32");
+		globalThis.process.env.PATH = "\\Tools;C:\\safe";
+		globalThis.process.env.PATHEXT = ".CMD";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\safe\\git-sc.CMD") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		const result = resolveExecutableOnPath("git-sc");
+
+		expect(result).toBe("C:\\safe\\git-sc.CMD");
+		// drive-relative 要素はそもそも statSync の探索対象にしない
+		expect(mockStatSync).not.toHaveBeenCalledWith("\\Tools\\git-sc.CMD");
+	});
+
+	it("resolveExecutableOnPath は Windows の UNC パス要素を受け入れる", () => {
+		setPlatform("win32");
+		globalThis.process.env.PATH = "\\\\server\\share\\bin";
+		globalThis.process.env.PATHEXT = ".CMD";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "\\\\server\\share\\bin\\git-sc.CMD") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		expect(resolveExecutableOnPath("git-sc")).toBe(
+			"\\\\server\\share\\bin\\git-sc.CMD",
+		);
+	});
+
+	it("resolveNativeExecutableOnPath は Windows の drive-relative な PATH 要素を除外する", () => {
+		setPlatform("win32");
+		globalThis.process.env.PATH = "\\Tools;C:\\safe";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\safe\\git.EXE") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		expect(resolveNativeExecutableOnPath("git")).toBe("C:\\safe\\git.EXE");
+		expect(mockStatSync).not.toHaveBeenCalledWith("\\Tools\\git.EXE");
+	});
+
 	it("Windows の System32 実行ファイルを SystemRoot から絶対パスで解決する", () => {
 		setPlatform("win32");
 		globalThis.process.env.SystemRoot = "C:\\Windows";
@@ -550,6 +600,16 @@ describe("resolveExecutableOnPath", () => {
 	it("Windows の System32 実行ファイル解決は相対 SystemRoot を拒否する", () => {
 		setPlatform("win32");
 		globalThis.process.env.SystemRoot = "Windows";
+
+		expect(resolveWindowsSystemExecutable("taskkill")).toBeNull();
+		expect(mockStatSync).not.toHaveBeenCalled();
+	});
+
+	it("Windows の System32 実行ファイル解決は drive-relative な SystemRoot を拒否する", () => {
+		// "\\Windows" は path.win32.isAbsolute では true だが drive-relative であり、
+		// current drive 依存で fully-qualified ではないため拒否する。
+		setPlatform("win32");
+		globalThis.process.env.SystemRoot = "\\Windows";
 
 		expect(resolveWindowsSystemExecutable("taskkill")).toBeNull();
 		expect(mockStatSync).not.toHaveBeenCalled();
@@ -912,5 +972,45 @@ describe("resolveSpawnCommand", () => {
 		expect(() => resolveSpawnCommand("git-sc", ["bad\narg"])).toThrow(
 			/unsupported control characters/,
 		);
+	});
+
+	it("Windows の cmd 経由起動で % を含む引数は例外を投げる (環境変数展開の防止)", () => {
+		// cmd.exe は二重引用符の内側でも %VAR% を展開し、コマンドライン上で % を確実に
+		// エスケープする手段がない。誤展開・誤実行を防ぐため % を含む引数は拒否する。
+		setPlatform("win32");
+		globalThis.process.env.PATH = "C:\\bin";
+		globalThis.process.env.PATHEXT = ".CMD";
+		globalThis.process.env.SystemRoot = "C:\\Windows";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (
+				p === "C:\\bin\\git-sc.CMD" ||
+				p === "C:\\Windows\\System32\\cmd.exe"
+			) {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		expect(() => resolveSpawnCommand("git-sc", ["%USERNAME%"])).toThrow(/%/);
+	});
+
+	it("Windows の cmd 経由起動で実行ファイルパスに % を含む場合も例外を投げる", () => {
+		// 実行ファイルパスに % が含まれる (例: %USERNAME% を含むディレクトリ) 場合、
+		// cmd.exe が展開して別パスを実行する事故を防ぐため拒否する。
+		setPlatform("win32");
+		globalThis.process.env.PATH = "C:\\Tools%USERNAME%\\bin";
+		globalThis.process.env.PATHEXT = ".CMD";
+		globalThis.process.env.SystemRoot = "C:\\Windows";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (
+				p === "C:\\Tools%USERNAME%\\bin\\git-sc.CMD" ||
+				p === "C:\\Windows\\System32\\cmd.exe"
+			) {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		expect(() => resolveSpawnCommand("git-sc")).toThrow(/%/);
 	});
 });
