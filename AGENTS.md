@@ -44,8 +44,9 @@ src/
   extension.ts              # Extension entry point (activate/deactivate)
   commands/
     getGitWorkspaceRoot.ts  # Resolve the first Git repository root from open workspace folders
-    runGitSc.ts             # Core git-sc execution with spawn
-    rewordCommit.ts         # Commit reword UI + git log parsing
+    runGitSc.ts             # commit フローのオプション組み立て + 共通 spawn ヘルパー呼び出し
+    rewordCommit.ts         # Commit reword UI + git log parsing + 共通 spawn ヘルパー呼び出し
+    spawnGitScProcess.ts    # commit / reword 共通の git-sc spawn + 進捗 + キャンセル状態機械
     isCommandNotFoundError.ts # Cross-platform command-not-found detection
     terminateProcessForCancellation.ts # Safe cancellation helper for POSIX and Windows
     resolveExecutablePath.ts # PATH 走査による実行ファイル絶対パス解決 (cwd ハイジャック対策)
@@ -62,6 +63,7 @@ src/
 ### Key Patterns
 
 - Commands are registered in `activate()` and added to `context.subscriptions`
+- `git-sc` の spawn / `withProgress` 進捗表示 / キャンセル状態機械は commit フロー (`runGitSc`) と reword フロー (`runGitScReword`) で完全に同一のため、`spawnGitScProcess.ts` の `spawnGitScWithProgress({ outputChannel, workspaceRoot, args, messages })` に集約している。呼び出し側は引数とフロー固有の表示文言 (`messages`) だけを渡す。`showGitScNotFoundMessage` / `GIT_SC_INSTALLATION_URL` もこのヘルパー内に定義する。
 - External process execution uses `child_process.spawn` with **`shell: false` を全 platform で固定**。`git-sc` は `resolveSpawnCommand(name, args)` で絶対パスに解決した上で起動する。PATH 走査は絶対パス要素だけを許容し、空要素・`.`・相対パスは全て除外することで cwd ハイジャック (悪意ある repo 直下の `git-sc` / `git-sc.cmd` 優先実行) を防ぐ。
   - **POSIX**: `detached: true` で起動し子プロセスがプロセスグループのリーダーになる。キャンセル時は `process.kill(-pid, "SIGTERM")` でプロセスグループ全体へ送信し、`git-sc` が起動した `git` 等の孫プロセスもまとめて終了させる。`process.kill(-pid)` が失敗した場合は直接の子プロセスへ `SIGTERM` をフォールバック送信する。SIGTERM を `trap "" TERM` 等で無視するプロセスに備え、5 秒経過しても `close` が来ない場合は SIGKILL に昇格してプロセスグループを強制終了する。`close` / `error` 到着時は `forceKillTimer` をクリアして余計な SIGKILL を送らない。
   - **Windows `.exe` 等**: 絶対パスを `shell: false` で直接起動する。
@@ -78,6 +80,8 @@ src/
 
 ## Recent Maintenance Notes
 
+- **Refactor (commit / reword の spawn 重複解消)**: `runGitSc` と `rewordCommit` の `runGitScReword` に約 130 行重複していた `git-sc` の spawn + `withProgress` + キャンセル状態機械 (`isCancelled`/`settled`/`forceKillTimer`/`resolveOnce`/`rejectOnce`、`resolveSpawnCommand`、stdout/stderr・close/error/onCancellationRequested ハンドラ、SIGKILL 昇格、`git.refresh` 連携) を新規 `src/commands/spawnGitScProcess.ts` の `spawnGitScWithProgress({ outputChannel, workspaceRoot, args, messages })` へ抽出。security-sensitive な spawn/cancel ロジックを 1 箇所へ集約し、将来の修正漏れリスクを下げた。フロー固有の差分 (引数・進捗/成功/失敗/キャンセル文言) のみ `messages` で受け取り、表示文字列は旧実装とバイト一致を維持 (空 args 時の `Running: git-sc ` 末尾スペースを含む)。重複していた `showGitScNotFoundMessage` / `GIT_SC_INSTALLATION_URL` もヘルパーへ集約。挙動は不変で既存 249 テストは全てパスし、codex のセカンドレビューでも文言・分岐・状態機械の一致を確認。
+- Added regression tests for `escapeCmdArgument` の CommandLineToArgvW 互換エスケープのうち、これまで未カバーだった引数内ダブルクォート (`a"b` → `"a\"b"`) と末尾バックスラッシュの倍化 (`end\` → `"end\\"`) を `resolveSpawnCommand` 経由で検証するケースを追加。
 - Biome updated to 2.4.16.
 - @types/vscode updated to 1.120.0.
 - VS Code engine requirement updated to `^1.120.0` to match `@types/vscode` and keep `vsce package --no-dependencies` valid.

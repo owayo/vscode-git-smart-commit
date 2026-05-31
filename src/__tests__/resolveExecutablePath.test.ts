@@ -823,6 +823,60 @@ describe("resolveSpawnCommand", () => {
 		});
 	});
 
+	it("Windows の cmd.exe 経由起動では引数内のダブルクォートを CommandLineToArgvW 互換でエスケープする", () => {
+		// 引数に " が含まれる場合、エスケープを誤ると cmd.exe 上で引数が分割され
+		// インジェクションの余地が生まれる。CommandLineToArgvW 規則どおり、" の直前の
+		// バックスラッシュを 2n+1 個にして \" として 1 引数の内側へ閉じ込める。
+		setPlatform("win32");
+		globalThis.process.env.PATH = "C:\\bin";
+		globalThis.process.env.PATHEXT = ".CMD";
+		globalThis.process.env.SystemRoot = "C:\\Windows";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (
+				p === "C:\\bin\\git-sc.CMD" ||
+				p === "C:\\Windows\\System32\\cmd.exe"
+			) {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		const result = resolveSpawnCommand("git-sc", ['a"b']);
+
+		expect(result).toEqual({
+			command: "C:\\Windows\\System32\\cmd.exe",
+			args: ["/d", "/s", "/c", '""C:\\bin\\git-sc.CMD" "a\\"b""'],
+			windowsVerbatimArguments: true,
+		});
+	});
+
+	it("Windows の cmd.exe 経由起動では末尾バックスラッシュを閉じ引用符の前で倍にする", () => {
+		// 末尾が \ で終わる引数は、そのまま閉じ " の前に置くと \" と解釈され
+		// 閉じ引用符が無効化されてしまう。CommandLineToArgvW 規則どおり、末尾の
+		// バックスラッシュ n 個を 2n 個へ倍化してから閉じることでパスを保全する。
+		setPlatform("win32");
+		globalThis.process.env.PATH = "C:\\bin";
+		globalThis.process.env.PATHEXT = ".CMD";
+		globalThis.process.env.SystemRoot = "C:\\Windows";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (
+				p === "C:\\bin\\git-sc.CMD" ||
+				p === "C:\\Windows\\System32\\cmd.exe"
+			) {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		const result = resolveSpawnCommand("git-sc", ["end\\"]);
+
+		expect(result).toEqual({
+			command: "C:\\Windows\\System32\\cmd.exe",
+			args: ["/d", "/s", "/c", '""C:\\bin\\git-sc.CMD" "end\\\\""'],
+			windowsVerbatimArguments: true,
+		});
+	});
+
 	it("Windows で見つからない場合は null を返す（cwd ハイジャック対策、フォールバック spawn は行わない）", () => {
 		setPlatform("win32");
 		globalThis.process.env.PATH = "C:\\bin";
