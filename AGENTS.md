@@ -9,7 +9,7 @@ VS Code extension for running git-sc (AI-powered smart commit message generator)
 - **Build System**: TypeScript compiler (`tsc`)
 - **Test Framework**: Vitest (`vitest run`)
 - **Linter**: Biome (`biome.jsonc`)
-- **pnpm settings**: `pnpm-workspace.yaml` (`overrides` for patched transitive dependencies)
+- **pnpm settings**: `pnpm-workspace.yaml` (`overrides` for patched transitive dependencies, `allowBuilds` for approved install scripts)
 - **Entry Point**: `src/extension.ts` -> `dist/extension.js`
 
 ## Commands
@@ -78,6 +78,12 @@ src/
 
 ## Recent Maintenance Notes
 
+- Biome updated to 2.4.16.
+- @types/vscode updated to 1.120.0.
+- VS Code engine requirement updated to `^1.120.0` to match `@types/vscode` and keep `vsce package --no-dependencies` valid.
+- ovsx updated to 1.0.0.
+- Added pnpm 11 `allowBuilds` entries for `@vscode/vsce-sign`, `esbuild`, and `keytar`, so `pnpm install --frozen-lockfile` succeeds non-interactively after dependency updates.
+- Added regression test for rejecting same-name directories during Windows System32 executable resolution.
 - Added regression test for Windows `.cmd` / `.bat` launch command line quoting when arguments include cmd.exe metacharacters (`&`, `|`, `<`, `>`, `^`).
 - Added `tmp@<0.2.6` override in `pnpm-workspace.yaml` so `@vscode/vsce` no longer pulls vulnerable `tmp` 0.2.5 and `pnpm audit --audit-level moderate` reports no known vulnerabilities.
 - Added regression test for lowercase Windows `windir` fallback during System32 command resolution.
@@ -225,7 +231,7 @@ src/
 ## VS Code Extension Details
 
 - **Activation**: `workspaceContains:.git`
-- **Engine**: `vscode ^1.96.0`
+- **Engine**: `vscode ^1.120.0`
 - **Publisher**: owayo
 - **Commands**: 5 commands (4 commit variants + reword)
 - **Keybindings**: `Cmd+Shift+G C` (commit), `Cmd+Shift+G R` (reword)

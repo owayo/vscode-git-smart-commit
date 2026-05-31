@@ -554,6 +554,19 @@ describe("resolveExecutableOnPath", () => {
 		expect(resolveWindowsSystemExecutable("taskkill")).toBeNull();
 		expect(mockStatSync).not.toHaveBeenCalled();
 	});
+
+	it("Windows の System32 実行ファイル解決は同名ディレクトリを拒否する", () => {
+		setPlatform("win32");
+		globalThis.process.env.SystemRoot = "C:\\Windows";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\Windows\\System32\\taskkill.exe") {
+				return mockFileStat(false);
+			}
+			throw new Error("not found");
+		});
+
+		expect(resolveWindowsSystemExecutable("taskkill")).toBeNull();
+	});
 });
 
 describe("resolveSpawnCommand", () => {
