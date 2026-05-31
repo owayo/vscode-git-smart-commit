@@ -9,11 +9,12 @@ const GIT_SC_INSTALLATION_URL =
 	"https://github.com/owayo/git-smart-commit#installation";
 
 /**
- * 実行中の git-sc 子プロセス集合。`close` / `error` で除去する。
- * 拡張機能の deactivate (VS Code reload / 終了 / 拡張停止) 時に
- * {@link terminateActiveGitScProcesses} から参照し、取り残しを防ぐ。
+ * 実行中の git-sc 子プロセスと、その「拡張停止時の終了ハンドラ」の対応表。
+ * spawn 後に登録し、`close` / `error` で除去する。拡張機能の deactivate
+ * (VS Code reload / 終了 / 拡張停止) 時に {@link terminateActiveGitScProcesses}
+ * から各ハンドラを呼び、取り残しを防ぐ。
  */
-const activeGitScProcesses = new Set<ChildProcess>();
+const activeGitScProcesses = new Map<ChildProcess, () => void>();
 
 /**
  * 現在実行中の git-sc 子プロセスをすべて終了させる。
@@ -22,12 +23,24 @@ const activeGitScProcesses = new Set<ChildProcess>();
  * VS Code の reload / 終了 / 拡張停止のタイミングで実行中の `git-sc` が孤児として残る。
  * 特に POSIX では `detached: true` で起動しており親プロセス終了では連動停止しないため、
  * プロセスグループごと終了させる必要がある。
+ *
+ * 各プロセスの終了ハンドラは内部で `isCancelled` を立ててから終了させる。これにより
+ * 終了に伴う `close` イベントが「キャンセル」として扱われ、拡張停止時に誤った成功/失敗
+ * 通知や `git.refresh` が走るのを防ぐ。終了シグナルはグレースフルな SIGTERM (Windows は
+ * `taskkill /T /F`) とする。git の操作中断による破損リスクと、VS Code shutdown のタイムアウトで
+ * 確実には走らない SIGKILL タイマーを避けるためで、SIGTERM を無視するプロセスの強制終了は
+ * 通常のユーザーキャンセル経路 (5 秒後 SIGKILL 昇格) に委ねる。
  */
 export function terminateActiveGitScProcesses(
 	outputChannel: vscode.OutputChannel,
 ): void {
-	for (const child of activeGitScProcesses) {
-		terminateProcessForCancellation(child, outputChannel);
+	if (activeGitScProcesses.size > 0) {
+		outputChannel.appendLine(
+			`\n⚠️ Terminating ${activeGitScProcesses.size} running git-sc process(es) on shutdown`,
+		);
+	}
+	for (const shutdown of activeGitScProcesses.values()) {
+		shutdown();
 	}
 	activeGitScProcesses.clear();
 }
@@ -144,7 +157,24 @@ export async function spawnGitScWithProgress({
 				//   windowsVerbatimArguments: true で生 command line を渡す。各引数は
 				//   CommandLineToArgvW 互換で自前 quote 済みなので Node.js DEP0190 の
 				//   "shell:true + args の unsafe な空白連結" を回避できる
-				const resolved = resolveSpawnCommand("git-sc", args);
+				let resolved: ReturnType<typeof resolveSpawnCommand>;
+				try {
+					resolved = resolveSpawnCommand("git-sc", args);
+				} catch (error) {
+					// resolveSpawnCommand は安全に起動できない引数 (制御文字や cmd.exe が
+					// 展開する `%` 等) で throw する。握り潰すと header だけ出て失敗理由が
+					// 見えないため、明示的に通知してから reject する。
+					const message =
+						error instanceof Error ? error.message : String(error);
+					outputChannel.appendLine(
+						`\n❌ Cannot safely launch git-sc: ${message}`,
+					);
+					vscode.window.showErrorMessage(
+						`Cannot safely launch git-sc: ${message.substring(0, 100)}`,
+					);
+					rejectOnce(error instanceof Error ? error : new Error(message));
+					return;
+				}
 				if (!resolved) {
 					// PATH に安全な絶対パスが見つからない場合は spawn せず、
 					// インストール案内へフォールバックする (フォールバック起動は
@@ -165,8 +195,17 @@ export async function spawnGitScWithProgress({
 					env: { ...globalThis.process.env, FORCE_COLOR: "0" },
 					windowsHide: true,
 				});
-				// deactivate 時の後始末対象として登録し、close/error で除去する。
-				activeGitScProcesses.add(process);
+				// deactivate 時の後始末対象として登録する。close/error で除去する。
+				// 終了ハンドラは isCancelled を立ててから終了させ、拡張停止時の close を
+				// 「キャンセル」扱いにして誤った成功/失敗通知・git.refresh を防ぐ。
+				const shutdownTerminate = (): void => {
+					if (isCancelled || settled) {
+						return;
+					}
+					isCancelled = true;
+					terminateProcessForCancellation(process, outputChannel);
+				};
+				activeGitScProcesses.set(process, shutdownTerminate);
 
 				let stdout = "";
 				let stderr = "";

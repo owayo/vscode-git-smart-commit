@@ -66,7 +66,15 @@ function isFullyQualifiedAbsolutePath(
 	if (!isWindows) {
 		return path.posix.isAbsolute(candidate);
 	}
-	return /^[a-zA-Z]:[\\/]/.test(candidate) || /^[\\/][\\/]/.test(candidate);
+	// drive-qualified (`C:\` / `C:/`) か UNC (`\\server\share...`) のみ許可する。
+	// UNC は server と share の両コンポーネントまで要求することで、`\\` / `//` 単体や
+	// `\\server` (share なし) のような退化ケースを除外する。これらは `path.win32.join`
+	// すると `\file` のような drive-relative パスに正規化され current drive 依存に戻るため、
+	// fully-qualified として扱ってはならない。
+	return (
+		/^[a-zA-Z]:[\\/]/.test(candidate) ||
+		/^[\\/]{2}[^\\/]+[\\/][^\\/]+(?:[\\/]|$)/.test(candidate)
+	);
 }
 
 /**

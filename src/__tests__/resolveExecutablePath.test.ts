@@ -517,6 +517,26 @@ describe("resolveExecutableOnPath", () => {
 		);
 	});
 
+	it("resolveExecutableOnPath は退化した UNC 前置 (\\\\ や \\\\server) を除外する", () => {
+		// "\\" / "\\server" (share なし) は path.win32.join すると "\file" のような
+		// drive-relative パスに正規化され current drive 依存に戻るため、fully-qualified
+		// として扱ってはならない。server/share の両方を備えた UNC だけ許可する。
+		setPlatform("win32");
+		globalThis.process.env.PATH = "\\\\;\\\\server;C:\\safe";
+		globalThis.process.env.PATHEXT = ".CMD";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\safe\\git-sc.CMD") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		expect(resolveExecutableOnPath("git-sc")).toBe("C:\\safe\\git-sc.CMD");
+		// 退化した UNC 前置は探索対象にしない（C:\safe の候補だけが statSync される）
+		const statPaths = mockStatSync.mock.calls.map((c) => c[0]);
+		expect(statPaths).toEqual(["C:\\safe\\git-sc.CMD"]);
+	});
+
 	it("resolveNativeExecutableOnPath は Windows の drive-relative な PATH 要素を除外する", () => {
 		setPlatform("win32");
 		globalThis.process.env.PATH = "\\Tools;C:\\safe";

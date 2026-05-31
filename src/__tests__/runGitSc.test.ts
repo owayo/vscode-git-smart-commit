@@ -1533,14 +1533,14 @@ describe("runGitSc", () => {
 		).toBe(true);
 	});
 
-	it("terminateActiveGitScProcesses は実行中の git-sc プロセスを終了させる (deactivate 用)", async () => {
+	it("terminateActiveGitScProcesses は実行中プロセスを終了し、その close は成功通知を出さない (deactivate 用)", async () => {
 		const { terminateActiveGitScProcesses } = await import(
 			"../commands/spawnGitScProcess"
 		);
 		const proc = createMockProcess();
 		mockSpawn.mockReturnValue(proc);
 
-		// spawn は withProgress コールバック内で同期的に行われ、active set に登録される
+		// spawn は withProgress コールバック内で同期的に行われ、active map に登録される
 		const promise = runGitSc(mockOutputChannel as never, { autoConfirm: true });
 
 		// deactivate 相当: 実行中プロセスを一括終了する
@@ -1549,8 +1549,30 @@ describe("runGitSc", () => {
 		// child.kill("SIGTERM") にフォールバックする
 		expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
 
-		// pending な promise を解決して後始末する
+		// shutdown ハンドラが isCancelled を立てるため、kill 後の close(0) は
+		// キャンセル扱いとなり、誤った成功通知・git.refresh を出さずに resolve する
 		proc.__emit("close", 0);
 		await promise;
+		expect(mockShowInformationMessage).not.toHaveBeenCalled();
+		expect(mockExecuteCommand).not.toHaveBeenCalledWith("git.refresh");
+	});
+
+	it("resolveSpawnCommand が throw した場合は明示的にエラー通知して reject する", async () => {
+		// % を含む引数など、安全に起動できない場合は resolveSpawnCommand が throw する。
+		// 握り潰さず outputChannel と showErrorMessage で失敗理由を明示する。
+		mockResolveSpawnCommand.mockImplementationOnce(() => {
+			throw new Error(
+				"Argument contains '%' which cmd.exe would expand: \"%USERNAME%\"",
+			);
+		});
+
+		await expect(
+			runGitSc(mockOutputChannel as never, { autoConfirm: true }),
+		).rejects.toThrow(/%/);
+
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			expect.stringContaining("Cannot safely launch git-sc"),
+		);
+		expect(mockSpawn).not.toHaveBeenCalled();
 	});
 });
