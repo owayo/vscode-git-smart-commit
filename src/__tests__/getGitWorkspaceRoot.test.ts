@@ -89,6 +89,19 @@ describe("getGitWorkspaceRoot", () => {
 		expect(workspaceRoot).toBe("/workspace/repo ");
 	});
 
+	it("should preserve a trailing carriage return on POSIX Git root paths", () => {
+		// POSIX のディレクトリ名末尾に CR (`\r`) を含むパスは有効。git は LF だけを付けて
+		// `…/repo\r\n` を返すため、CRLF とみなして 2 文字削ると本来の末尾 `\r` が失われる。
+		// POSIX (この実行環境) では LF だけを除去し、末尾 CR を保持することを検証する。
+		mockExecFileSync.mockReturnValueOnce("/workspace/repo\r\n");
+
+		const workspaceRoot = getGitWorkspaceRoot([
+			{ uri: { fsPath: "/workspace/repo\r/packages/app" } },
+		] as never);
+
+		expect(workspaceRoot).toBe("/workspace/repo\r");
+	});
+
 	it("should return null when no workspace folder is inside a Git repository", () => {
 		mockExecFileSync.mockImplementation(() => {
 			throw new Error("fatal: not a git repository");
