@@ -48,16 +48,26 @@ export function terminateActiveGitScProcesses(
 /**
  * `git-sc` が PATH 上に見つからない場合に、インストール案内付きのエラー通知を表示する。
  */
-function showGitScNotFoundMessage(): void {
-	vscode.window
-		.showErrorMessage(
+function showGitScNotFoundMessage(outputChannel: vscode.OutputChannel): void {
+	void Promise.resolve(
+		vscode.window.showErrorMessage(
 			"git-sc command not found. Please install it and ensure it's in your PATH.",
 			"View Installation",
-		)
+		),
+	)
 		.then((selection) => {
 			if (selection === "View Installation") {
-				vscode.env.openExternal(vscode.Uri.parse(GIT_SC_INSTALLATION_URL));
+				return vscode.env.openExternal(
+					vscode.Uri.parse(GIT_SC_INSTALLATION_URL),
+				);
 			}
+			return undefined;
+		})
+		.catch((error: unknown) => {
+			const message = error instanceof Error ? error.message : String(error);
+			outputChannel.appendLine(
+				`\n⚠️ Failed to open installation guide: ${message}`,
+			);
 		});
 }
 
@@ -182,7 +192,7 @@ export async function spawnGitScWithProgress({
 					outputChannel.appendLine(
 						"\n❌ git-sc not found in PATH. Aborting before unsafe spawn.",
 					);
-					showGitScNotFoundMessage();
+					showGitScNotFoundMessage(outputChannel);
 					rejectOnce(new Error("git-sc command not found in PATH"));
 					return;
 				}
@@ -257,7 +267,7 @@ export async function spawnGitScWithProgress({
 						);
 
 						if (isCommandNotFoundError(errorMessage)) {
-							showGitScNotFoundMessage();
+							showGitScNotFoundMessage(outputChannel);
 						} else {
 							vscode.window.showErrorMessage(
 								`${messages.failureNotificationPrefix}: ${errorMessage.substring(0, 100)}`,
@@ -284,7 +294,7 @@ export async function spawnGitScWithProgress({
 					);
 
 					if (err.message.includes("ENOENT")) {
-						showGitScNotFoundMessage();
+						showGitScNotFoundMessage(outputChannel);
 					} else {
 						vscode.window.showErrorMessage(
 							`Failed to run git-sc: ${err.message}`,

@@ -340,6 +340,29 @@ describe("runGitSc", () => {
 		);
 	});
 
+	it("should log a warning when opening installation page fails", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+		mockShowErrorMessage.mockResolvedValue("View Installation");
+		mockOpenExternal.mockRejectedValueOnce(new Error("open failed"));
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => {
+			proc.stderr?.emit("data", Buffer.from("zsh: command not found: git-sc"));
+			proc.__emit("close", 127);
+		}, 10);
+
+		await expect(promise).rejects.toThrow();
+		await new Promise((resolve) => setImmediate(resolve));
+
+		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
+			"\n⚠️ Failed to open installation guide: open failed",
+		);
+	});
+
 	it("should show installation link on Windows command-not-found message", async () => {
 		const proc = createMockProcess();
 		mockSpawn.mockReturnValue(proc);
