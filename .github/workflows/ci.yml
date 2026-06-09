@@ -16,19 +16,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "24"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v5
         with:
-          version: latest
-
-      - name: Cache pnpm store
-        uses: actions/cache@v5
-        with:
-          path: ~/.local/share/pnpm/store
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: ${{ runner.os }}-pnpm-
+          cache: true
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

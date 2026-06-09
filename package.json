@@ -3,6 +3,7 @@
 	"displayName": "git-sc (Smart Commit)",
 	"description": "Run git-sc command with one click - AI-powered smart commit message generator",
 	"version": "26.3.102",
+	"packageManager": "pnpm@11.5.2",
 	"publisher": "owayo",
 	"license": "MIT",
 	"icon": "icon.png",

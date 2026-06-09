@@ -36,12 +36,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "24"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v5
         with:
-          version: latest
+          cache: true
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -120,12 +120,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "24"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v5
         with:
-          version: latest
+          cache: true
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -149,12 +149,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "24"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v5
         with:
-          version: latest
+          cache: true
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
