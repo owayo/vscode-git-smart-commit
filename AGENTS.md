@@ -82,6 +82,7 @@ src/
 
 ## Recent Maintenance Notes
 
+- Added a regression test for `escapeCmdArgument` の CommandLineToArgvW 互換エスケープのうち、これまで未カバーだった「ダブルクォート直前のバックスラッシュ」分岐 (`a\"b` → `"a\\\"b"`) を `resolveSpawnCommand` 経由で固定。既存テストは「バックスラッシュを伴わない `"`」(`a"b`) と「末尾バックスラッシュの倍化」(`end\`) を個別に検証していたが、両者が隣接して `backslashes > 0` のまま `"` に到達する経路 (`"\\".repeat(backslashes * 2 + 1)` 分岐) は未テストだった。誤って `*2+1` を `+1` に潰すとバックスラッシュが 1 個に縮約され引数境界が崩れてインジェクションの余地が生じるため、`2n+1` 拡張を回帰テストで固定した (264 テストへ)。codex のセカンドレビューでも入力 4 文字 (`a`/`\`/`"`/`b`)・期待値 (`a` + バックスラッシュ 3 個 + `"`)・実装一致・未カバー分岐の的中を確認。
 - **Reliability fix (インストール案内リンクの reject 処理)**: `showGitScNotFoundMessage` は "View Installation" 選択後に `vscode.env.openExternal(...)` を呼んでいたが、戻り値の Thenable に catch がなく、OS や VS Code 側で URL オープンが reject した場合に未処理 Promise rejection になり得た。`Promise.resolve(...).then(...).catch(...)` でダイアログ表示と URL オープンの双方を捕捉し、失敗時は `OutputChannel` に `Failed to open installation guide` 警告を記録するよう変更。`runGitSc` に openExternal reject の回帰テストを追加。
 - @vscode/vsce updated to 3.9.2-1.
 - Vitest updated to 4.1.8.

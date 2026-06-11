@@ -957,6 +957,38 @@ describe("resolveSpawnCommand", () => {
 		});
 	});
 
+	it("Windows の cmd.exe 経由起動ではダブルクォート直前のバックスラッシュを 2n+1 個へ拡張する", () => {
+		// CommandLineToArgvW では `"` の直前にあるバックスラッシュ n 個を 2n+1 個へ拡張する
+		// 必要がある (n 個をリテラル化する 2n 個 + `"` をエスケープする 1 個)。誤って `+1` だけだと
+		// バックスラッシュが 1 個に潰れて引数境界が崩れ、インジェクションの余地が生まれる。
+		// 既存テストは「バックスラッシュを伴わない `"`」と「末尾バックスラッシュ」を個別に検証して
+		// いたが、両者が隣接する `a\"b` のケース (backslashes>0 のまま `"` に到達する分岐) は
+		// 未カバーだったため、ここで 2n+1 拡張を固定する。
+		setPlatform("win32");
+		globalThis.process.env.PATH = "C:\\bin";
+		globalThis.process.env.PATHEXT = ".CMD";
+		globalThis.process.env.SystemRoot = "C:\\Windows";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (
+				p === "C:\\bin\\git-sc.CMD" ||
+				p === "C:\\Windows\\System32\\cmd.exe"
+			) {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		// 入力リテラルは a \ " b の 4 文字。`\` 1 個 + `"` なので CommandLineToArgvW 規則では
+		// バックスラッシュが 2*1+1=3 個へ拡張され `a\\\"b` (= a + `\` 3 個 + `"` + b) になる。
+		const result = resolveSpawnCommand("git-sc", ['a\\"b']);
+
+		expect(result).toEqual({
+			command: "C:\\Windows\\System32\\cmd.exe",
+			args: ["/d", "/s", "/c", '""C:\\bin\\git-sc.CMD" "a\\\\\\"b""'],
+			windowsVerbatimArguments: true,
+		});
+	});
+
 	it("Windows で見つからない場合は null を返す（cwd ハイジャック対策、フォールバック spawn は行わない）", () => {
 		setPlatform("win32");
 		globalThis.process.env.PATH = "C:\\bin";
