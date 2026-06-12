@@ -55,13 +55,20 @@ function showGitScNotFoundMessage(outputChannel: vscode.OutputChannel): void {
 			"View Installation",
 		),
 	)
-		.then((selection) => {
-			if (selection === "View Installation") {
-				return vscode.env.openExternal(
-					vscode.Uri.parse(GIT_SC_INSTALLATION_URL),
+		.then(async (selection) => {
+			if (selection !== "View Installation") {
+				return;
+			}
+			// openExternal は Thenable<boolean> を返し、false は「オープンに失敗した」ことを示す。
+			// reject だけでなく false 解決も失敗モードなので、握りつぶさず警告として記録する。
+			const opened = await vscode.env.openExternal(
+				vscode.Uri.parse(GIT_SC_INSTALLATION_URL),
+			);
+			if (opened === false) {
+				outputChannel.appendLine(
+					"\n⚠️ Failed to open installation guide: VS Code returned false",
 				);
 			}
-			return undefined;
 		})
 		.catch((error: unknown) => {
 			const message = error instanceof Error ? error.message : String(error);

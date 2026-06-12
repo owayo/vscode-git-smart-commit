@@ -363,6 +363,61 @@ describe("runGitSc", () => {
 		);
 	});
 
+	it("should log a warning when openExternal resolves false", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+		mockShowErrorMessage.mockResolvedValue("View Installation");
+		// openExternal は Thenable<boolean> を返し、false 解決は「オープンに失敗」を意味する。
+		// reject だけでなく false の握りつぶしも防ぐことを検証する。
+		mockOpenExternal.mockResolvedValueOnce(false);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => {
+			proc.stderr?.emit("data", Buffer.from("zsh: command not found: git-sc"));
+			proc.__emit("close", 127);
+		}, 10);
+
+		await expect(promise).rejects.toThrow();
+		await new Promise((resolve) => setImmediate(resolve));
+
+		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
+			"\n⚠️ Failed to open installation guide: VS Code returned false",
+		);
+	});
+
+	it("should not log a warning when openExternal resolves true", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+		mockShowErrorMessage.mockResolvedValue("View Installation");
+		// 正常にオープンできた場合 (true 解決) は警告を出さない。
+		// opened === false で判定しているため、true/undefined を失敗扱いしない。
+		mockOpenExternal.mockResolvedValueOnce(true);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => {
+			proc.stderr?.emit("data", Buffer.from("zsh: command not found: git-sc"));
+			proc.__emit("close", 127);
+		}, 10);
+
+		await expect(promise).rejects.toThrow();
+		await new Promise((resolve) => setImmediate(resolve));
+
+		const appendLineCalls = (
+			mockOutputChannel.appendLine as ReturnType<typeof vi.fn>
+		).mock.calls.map((c) => c[0] as string);
+		expect(
+			appendLineCalls.some((line) =>
+				line.includes("Failed to open installation guide"),
+			),
+		).toBe(false);
+	});
+
 	it("should show installation link on Windows command-not-found message", async () => {
 		const proc = createMockProcess();
 		mockSpawn.mockReturnValue(proc);

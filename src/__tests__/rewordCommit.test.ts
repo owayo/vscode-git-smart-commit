@@ -919,6 +919,35 @@ describe("rewordCommit", () => {
 		);
 	});
 
+	it("should log a warning when openExternal resolves false after reword failure", async () => {
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+		mockShowErrorMessage.mockResolvedValue("View Installation");
+		// openExternal は Thenable<boolean> を返し、false 解決は「オープンに失敗」を意味する。
+		// reject だけでなく false の握りつぶしも防ぐことを検証する。
+		mockOpenExternal.mockResolvedValueOnce(false);
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = rewordCommit(mockOutputChannel as never);
+		setTimeout(() => {
+			proc.stderr?.emit("data", Buffer.from("zsh: command not found: git-sc"));
+			proc.__emit("close", 127);
+		}, 10);
+
+		await expect(promise).rejects.toThrow();
+		await new Promise((resolve) => setImmediate(resolve));
+
+		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
+			"\n⚠️ Failed to open installation guide: VS Code returned false",
+		);
+	});
+
 	it("should handle reword spawn error (ENOENT)", async () => {
 		mockExecFileSync.mockReturnValue(
 			"abc1234\x00feat: test\x001h ago\x00Author\x00",
