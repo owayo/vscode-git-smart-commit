@@ -102,6 +102,59 @@ describe("getGitWorkspaceRoot", () => {
 		expect(workspaceRoot).toBe("/workspace/repo\r");
 	});
 
+	it("should strip a CRLF terminator on Windows Git root paths", () => {
+		// Windows のパスには制御文字 `\r` を含められないため、`\r\n` は常に git が付けた
+		// 行終端とみなして 2 文字除去する。POSIX と同じ「LF 1 文字だけ除去」に退行すると
+		// 末尾に `\r` が残り、存在しないディレクトリを cwd に git-sc を spawn してしまう。
+		const originalPlatform = Object.getOwnPropertyDescriptor(
+			globalThis.process,
+			"platform",
+		);
+		Object.defineProperty(globalThis.process, "platform", {
+			value: "win32",
+			configurable: true,
+		});
+		try {
+			mockExecFileSync.mockReturnValueOnce("C:\\workspace\\repo\r\n");
+
+			const workspaceRoot = getGitWorkspaceRoot([
+				{ uri: { fsPath: "C:\\workspace\\repo\\packages\\app" } },
+			] as never);
+
+			expect(workspaceRoot).toBe("C:\\workspace\\repo");
+		} finally {
+			if (originalPlatform) {
+				Object.defineProperty(globalThis.process, "platform", originalPlatform);
+			}
+		}
+	});
+
+	it("should strip a bare LF terminator on Windows Git root paths", () => {
+		// Windows の git も通常は LF だけを付けて返すため、CRLF 専用の 2 文字除去に
+		// 倒れて LF 単体の行終端を取りこぼさないことを検証する。
+		const originalPlatform = Object.getOwnPropertyDescriptor(
+			globalThis.process,
+			"platform",
+		);
+		Object.defineProperty(globalThis.process, "platform", {
+			value: "win32",
+			configurable: true,
+		});
+		try {
+			mockExecFileSync.mockReturnValueOnce("C:\\workspace\\repo\n");
+
+			const workspaceRoot = getGitWorkspaceRoot([
+				{ uri: { fsPath: "C:\\workspace\\repo\\packages\\app" } },
+			] as never);
+
+			expect(workspaceRoot).toBe("C:\\workspace\\repo");
+		} finally {
+			if (originalPlatform) {
+				Object.defineProperty(globalThis.process, "platform", originalPlatform);
+			}
+		}
+	});
+
 	it("should return null when no workspace folder is inside a Git repository", () => {
 		mockExecFileSync.mockImplementation(() => {
 			throw new Error("fatal: not a git repository");
