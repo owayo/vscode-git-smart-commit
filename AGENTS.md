@@ -51,6 +51,7 @@ src/
     terminateProcessForCancellation.ts # Safe cancellation helper for POSIX and Windows
     resolveExecutablePath.ts # PATH 走査による実行ファイル絶対パス解決 (cwd ハイジャック対策)
   __tests__/
+    dependencyOverrides.test.ts # pnpm override のセキュリティ退行テスト
     extension.test.ts       # Extension activation tests
     getGitWorkspaceRoot.test.ts # Git workspace root resolution tests
     isCommandNotFoundError.test.ts # Command-not-found判定のテスト
@@ -82,6 +83,7 @@ src/
 
 ## Recent Maintenance Notes
 
+- **Security maintenance (transitive dependency audit overrides)**: `pnpm audit --audit-level moderate` で dev-only の推移依存に既知脆弱性が検出されたため、`pnpm-workspace.yaml` の overrides を patched version へ更新した。対象は `esbuild@>=0.17.0 <0.28.1` -> `0.28.1`、`tmp@<0.2.7` -> `0.2.7`、`form-data@>=4.0.0 <4.0.6` -> `4.0.6`、`vite@>=7.0.0 <=7.3.4` -> `7.3.5`、`js-yaml@<=4.1.1` -> `4.2.0`、`markdown-it@<=14.1.1` -> `14.2.0`。Vite は最新 8 系ではなく、Vitest 4.1.8 の transitive dependency として互換性を保つため patched 下限の 7.3.5 に留めた。lockfile を再生成し、`pnpm audit --audit-level moderate` は `No known vulnerabilities found` へ戻した。さらに `dependencyOverrides.test.ts` を追加して、これらの security override が削除・退行しないことを Vitest で固定した (270 テストへ)。
 - **Reliability fix (インストール案内リンクの `false` 解決を握りつぶし)**: `showGitScNotFoundMessage` の "View Installation" 経路は `vscode.env.openExternal(...)` の reject だけを `.catch()` していたが、VS Code API は `Thenable<boolean>` を返し `false` 解決が「オープンに失敗した」ことを示す。reject ではなく `false` でオープン失敗した場合、警告ログも通知も出ず失敗が握りつぶされ、直前の「reject 処理を追加」した設計意図 (URL オープン失敗時は `OutputChannel` に警告を記録する) と不整合だった。`.then(async (selection) => …)` で `openExternal` の戻り値を `await` し、`opened === false` のときだけ `OutputChannel` に `Failed to open installation guide: VS Code returned false` 警告を記録するよう変更。判定を `!opened` ではなく `opened === false` にしたのは、戻り値が `undefined`/`true` の場合 (テストのデフォルト mock や正常オープン) を失敗扱いしないため。修正は commit / reword 共通ヘルパー (`spawnGitScProcess.ts`) 1 箇所のため両フローに同時に効く。`false` 解決時の警告出力 (両フロー) と、`true` 解決時に警告を出さない回帰テストを追加 (267 テストへ)。codex のセカンドレビューでも `false` 失敗の捕捉・既存 reject 経路と `undefined` mock 挙動の非破綻・`await` 追加による promise タイミングの妥当性を確認。
 - Added a regression test for `escapeCmdArgument` の CommandLineToArgvW 互換エスケープのうち、これまで未カバーだった「ダブルクォート直前のバックスラッシュ」分岐 (`a\"b` → `"a\\\"b"`) を `resolveSpawnCommand` 経由で固定。既存テストは「バックスラッシュを伴わない `"`」(`a"b`) と「末尾バックスラッシュの倍化」(`end\`) を個別に検証していたが、両者が隣接して `backslashes > 0` のまま `"` に到達する経路 (`"\\".repeat(backslashes * 2 + 1)` 分岐) は未テストだった。誤って `*2+1` を `+1` に潰すとバックスラッシュが 1 個に縮約され引数境界が崩れてインジェクションの余地が生じるため、`2n+1` 拡張を回帰テストで固定した (264 テストへ)。codex のセカンドレビューでも入力 4 文字 (`a`/`\`/`"`/`b`)・期待値 (`a` + バックスラッシュ 3 個 + `"`)・実装一致・未カバー分岐の的中を確認。
 - **Reliability fix (インストール案内リンクの reject 処理)**: `showGitScNotFoundMessage` は "View Installation" 選択後に `vscode.env.openExternal(...)` を呼んでいたが、戻り値の Thenable に catch がなく、OS や VS Code 側で URL オープンが reject した場合に未処理 Promise rejection になり得た。`Promise.resolve(...).then(...).catch(...)` でダイアログ表示と URL オープンの双方を捕捉し、失敗時は `OutputChannel` に `Failed to open installation guide` 警告を記録するよう変更。`runGitSc` に openExternal reject の回帰テストを追加。
