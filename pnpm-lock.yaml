@@ -34,7 +34,7 @@ importers:
         specifier: ^2.4.16
         version: 2.4.16
       '@types/node':
-        specifier: ^25.9.2
+        specifier: ^25.9.3
         version: 25.9.3
       '@types/vscode':
         specifier: 1.120.0

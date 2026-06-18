@@ -163,6 +163,17 @@ describe("resolveExecutableOnPath", () => {
 		expect(mockStatSync).not.toHaveBeenCalled();
 	});
 
+	it("POSIX で PATH 環境変数自体が未定義の場合は null を返す", () => {
+		// POSIX では PATH が未定義のとき Windows のような大文字小文字 fallback は行わない。
+		// `getPathEnvValue()` が空文字列を返し、空配列を iterate するだけで終わる安全側の挙動を保証する。
+		setPlatform("darwin");
+		delete globalThis.process.env.PATH;
+
+		expect(resolveExecutableOnPath("git-sc")).toBeNull();
+		expect(mockAccessSync).not.toHaveBeenCalled();
+		expect(mockStatSync).not.toHaveBeenCalled();
+	});
+
 	it("returns the absolute path when found in PATH on Windows", () => {
 		setPlatform("win32");
 		globalThis.process.env.PATH = "C:\\tools;C:\\Program Files\\Git\\cmd";
