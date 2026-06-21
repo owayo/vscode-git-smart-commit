@@ -49,6 +49,22 @@ describe("isCommandNotFoundError", () => {
 		).toBe(true);
 	});
 
+	it("returns true for PowerShell cmdlet messages with .cmd / .bat extensions", () => {
+		// PowerShell が `.cmd` や `.bat` の拡張子付きで報告するケース。
+		// `git-sc.cmd` を直接実行できるよう PATH に登録しているユーザー環境で
+		// PowerShell から起動した際に発生し得る。
+		expect(
+			isCommandNotFoundError(
+				"The term 'git-sc.cmd' is not recognized as the name of a cmdlet",
+			),
+		).toBe(true);
+		expect(
+			isCommandNotFoundError(
+				"The term 'git-sc.bat' is not recognized as the name of a cmdlet",
+			),
+		).toBe(true);
+	});
+
 	it("returns false for unrelated not-found errors", () => {
 		expect(isCommandNotFoundError("config file not found")).toBe(false);
 		expect(
