@@ -311,7 +311,10 @@ export async function spawnGitScWithProgress({
 				});
 
 				token.onCancellationRequested(() => {
-					if (isCancelled) {
+					// `close` / `error` で resolveOnce / rejectOnce 済みのときは settled=true。
+					// settled 後にキャンセル通知が遅れて到着するレースが VS Code UI 側で起こり得るが、
+					// その場合は既に完了済みなので終了処理を再実行せず、誤った "cancelled" ログも出さない。
+					if (isCancelled || settled) {
 						return;
 					}
 					isCancelled = true;

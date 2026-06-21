@@ -791,6 +791,50 @@ describe("runGitSc", () => {
 		expect(mockShowErrorMessage).not.toHaveBeenCalled();
 	});
 
+	it("should ignore cancellation after process has already settled", async () => {
+		// `close` で settled になった後に、VS Code 側からキャンセル通知が遅れて到着するレース。
+		// settled 後の cancel ハンドラは終了処理を再実行せず、誤った "cancelled" ログも出さない。
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		mockWithProgress.mockImplementationOnce(
+			async (
+				_options: unknown,
+				callback: (progress: unknown, token: unknown) => Promise<void>,
+			) => {
+				let cancelHandler: (() => void) | undefined;
+				const progress = { report: vi.fn() };
+				const token = {
+					onCancellationRequested: vi.fn((handler: () => void) => {
+						cancelHandler = handler;
+					}),
+					isCancellationRequested: false,
+				};
+
+				const progressPromise = callback(progress, token);
+				// 先に正常終了 (close 0) → settled = true
+				setTimeout(() => proc.__emit("close", 0), 10);
+				await progressPromise;
+				// settled 後にキャンセルが遅れて到着するレース
+				cancelHandler?.();
+			},
+		);
+
+		await runGitSc(mockOutputChannel as never, { autoConfirm: true });
+
+		// settled 済みなのでプロセスへ kill / taskkill は送られない
+		expect(proc.kill).not.toHaveBeenCalled();
+		expect(mockSpawn).not.toHaveBeenCalledWith(
+			TASKKILL_COMMAND,
+			expect.any(Array),
+			expect.any(Object),
+		);
+		// 「cancelled by user」のログも出力されない
+		expect(mockOutputChannel.appendLine).not.toHaveBeenCalledWith(
+			"\n⚠️ git-sc cancelled by user",
+		);
+	});
+
 	it("should not include -a flag when stageAll is false", async () => {
 		const proc = createMockProcess();
 		mockSpawn.mockReturnValue(proc);
