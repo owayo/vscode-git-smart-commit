@@ -914,10 +914,13 @@ describe("resolveSpawnCommand", () => {
 		});
 	});
 
-	it("Windows の cmd.exe 経由起動では引数内のダブルクォートを CommandLineToArgvW 互換でエスケープする", () => {
-		// 引数に " が含まれる場合、エスケープを誤ると cmd.exe 上で引数が分割され
-		// インジェクションの余地が生まれる。CommandLineToArgvW 規則どおり、" の直前の
-		// バックスラッシュを 2n+1 個にして \" として 1 引数の内側へ閉じ込める。
+	it('Windows の cmd 経由起動で " を含む引数は例外を投げる (cmd.exe では安全に quote できない)', () => {
+		// cmd.exe は CommandLineToArgvW と異なり `\"` をエスケープとして解釈せず、
+		// `"` を string トグルとして扱う。CommandLineToArgvW 互換 escape (`"a\"b"`) を
+		// cmd.exe 経由経路で渡すと、cmd.exe 側の string parser では引用が途中で閉じ、
+		// その後の `&` `|` `<` `>` `^` がコマンド区切りやリダイレクトとして露出するため
+		// shell injection の余地が残る。安全に escape する手段が cmd.exe には存在しないため、
+		// `%` と同様に `"` を含む引数は早期に reject する。
 		setPlatform("win32");
 		globalThis.process.env.PATH = "C:\\bin";
 		globalThis.process.env.PATHEXT = ".CMD";
@@ -932,13 +935,9 @@ describe("resolveSpawnCommand", () => {
 			throw new Error("not found");
 		});
 
-		const result = resolveSpawnCommand("git-sc", ['a"b']);
-
-		expect(result).toEqual({
-			command: "C:\\Windows\\System32\\cmd.exe",
-			args: ["/d", "/s", "/c", '""C:\\bin\\git-sc.CMD" "a\\"b""'],
-			windowsVerbatimArguments: true,
-		});
+		expect(() => resolveSpawnCommand("git-sc", ['a"b'])).toThrow(
+			/cmd\.exe cannot safely quote/,
+		);
 	});
 
 	it("Windows の cmd.exe 経由起動では末尾バックスラッシュを閉じ引用符の前で倍にする", () => {
@@ -968,13 +967,11 @@ describe("resolveSpawnCommand", () => {
 		});
 	});
 
-	it("Windows の cmd.exe 経由起動ではダブルクォート直前のバックスラッシュを 2n+1 個へ拡張する", () => {
-		// CommandLineToArgvW では `"` の直前にあるバックスラッシュ n 個を 2n+1 個へ拡張する
-		// 必要がある (n 個をリテラル化する 2n 個 + `"` をエスケープする 1 個)。誤って `+1` だけだと
-		// バックスラッシュが 1 個に潰れて引数境界が崩れ、インジェクションの余地が生まれる。
-		// 既存テストは「バックスラッシュを伴わない `"`」と「末尾バックスラッシュ」を個別に検証して
-		// いたが、両者が隣接する `a\"b` のケース (backslashes>0 のまま `"` に到達する分岐) は
-		// 未カバーだったため、ここで 2n+1 拡張を固定する。
+	it('Windows の cmd 経由起動で " を含む引数はバックスラッシュ前置でも reject する', () => {
+		// CommandLineToArgvW 互換 escape (`"a\\\"b"`) を cmd.exe 経由経路で渡すと、
+		// cmd.exe の string parser は `\` をエスケープと解釈しないため引用境界が崩れ、
+		// 後続文字がリテラル化されない問題は同じ。バックスラッシュ前置の有無で例外可否が
+		// 揺れないことを担保する。
 		setPlatform("win32");
 		globalThis.process.env.PATH = "C:\\bin";
 		globalThis.process.env.PATHEXT = ".CMD";
@@ -989,15 +986,10 @@ describe("resolveSpawnCommand", () => {
 			throw new Error("not found");
 		});
 
-		// 入力リテラルは a \ " b の 4 文字。`\` 1 個 + `"` なので CommandLineToArgvW 規則では
-		// バックスラッシュが 2*1+1=3 個へ拡張され `a\\\"b` (= a + `\` 3 個 + `"` + b) になる。
-		const result = resolveSpawnCommand("git-sc", ['a\\"b']);
-
-		expect(result).toEqual({
-			command: "C:\\Windows\\System32\\cmd.exe",
-			args: ["/d", "/s", "/c", '""C:\\bin\\git-sc.CMD" "a\\\\\\"b""'],
-			windowsVerbatimArguments: true,
-		});
+		// 入力リテラルは a \ " b の 4 文字。`\` 前置の有無に関わらず " を含む引数は reject。
+		expect(() => resolveSpawnCommand("git-sc", ['a\\"b'])).toThrow(
+			/cmd\.exe cannot safely quote/,
+		);
 	});
 
 	it("Windows で見つからない場合は null を返す（cwd ハイジャック対策、フォールバック spawn は行わない）", () => {

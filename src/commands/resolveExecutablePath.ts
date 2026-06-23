@@ -250,17 +250,28 @@ function escapeCmdArgument(value: string): string {
 		);
 	}
 
-	// CommandLineToArgvW のルールに従ってバックスラッシュと " をエスケープする
+	// cmd.exe は CommandLineToArgvW と異なり `\"` をエスケープとして解釈せず、
+	// `"` を string トグルとして扱う。`"a\"b"` のような CommandLineToArgvW 互換 escape を
+	// cmd.exe 経由経路で渡すと、cmd.exe 側の string parser では引用が途中で閉じ、その後の
+	// `&` `|` `<` `>` `^` がコマンド区切りやリダイレクトとして露出 (shell injection)。
+	// `%` と同様に cmd.exe 上で安全に escape する手段が存在しないため、`"` を含む引数は
+	// 早期に reject して誤実行を防ぐ。git-sc の実引数 (-a/-b/-y/--reword/<hex hash>) は
+	// `"` を含まないため通常は発生しない。
+	if (value.includes('"')) {
+		throw new Error(
+			`Argument contains '"' which cmd.exe cannot safely quote: ${JSON.stringify(value)}`,
+		);
+	}
+
+	// `"` を reject 済みなので、target program 側 (例: git-sc.cmd 内部で起動する node.exe)
+	// の CommandLineToArgvW でも安全に再解析できる。バックスラッシュ単独はそのまま透過し、
+	// 末尾のみ閉じ `"` の直前で倍化する (倍化しないと target program が `\"` を escape と
+	// 誤解釈する余地が残る)。
 	let escaped = "";
 	let backslashes = 0;
 	for (const ch of value) {
 		if (ch === "\\") {
 			backslashes += 1;
-			continue;
-		}
-		if (ch === '"') {
-			escaped += "\\".repeat(backslashes * 2 + 1) + '"';
-			backslashes = 0;
 			continue;
 		}
 		escaped += "\\".repeat(backslashes) + ch;
