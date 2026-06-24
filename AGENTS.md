@@ -51,7 +51,7 @@ src/
     terminateProcessForCancellation.ts # Safe cancellation helper for POSIX and Windows
     resolveExecutablePath.ts # PATH 走査による実行ファイル絶対パス解決 (cwd ハイジャック対策)
   __tests__/
-    dependencyOverrides.test.ts # pnpm override のセキュリティ退行テスト
+    dependencyOverrides.test.ts # pnpm override と package metadata の退行テスト
     extension.test.ts       # Extension activation tests
     getGitWorkspaceRoot.test.ts # Git workspace root resolution tests
     isCommandNotFoundError.test.ts # Command-not-found判定のテスト
@@ -83,6 +83,8 @@ src/
 
 ## Recent Maintenance Notes
 
+- @types/vscode updated to 1.125.0.
+- VS Code engine requirement updated to `^1.125.0` to match `@types/vscode` and keep `vsce package --no-dependencies` valid. `dependencyOverrides.test.ts` now also checks that `engines.vscode` stays aligned with `@types/vscode`, so future API type updates do not leave package metadata behind.
 - **Security fix (cmd.exe 経由経路でのダブルクォート escape 失敗)**: `escapeCmdArgument` の CommandLineToArgvW 互換 escape (`a"b` → `"a\"b"`) は target program 側の argv parser には有効だが、cmd.exe 自身の string parser には**有効ではない**。cmd.exe は `\` を `"` のエスケープとして解釈せず、`"` を string トグルとして扱うため、`"a\"b"` を cmd.exe `/d /s /c "..."` 経由で渡すと cmd.exe 側で引用が途中で閉じ、後続の `&` `|` `<` `>` `^` がコマンド区切りやリダイレクトとして露出し shell injection の余地が残っていた。`%` と同様に cmd.exe 上で安全に escape する手段が存在しないため、`escapeCmdArgument` で `"` を含む値を制御文字・`%` と並べて throw して reject するよう変更。これにより `spawnGitScWithProgress` の try/catch 経路で `Cannot safely launch git-sc` を明示通知してから reject する流れに合流する。現状 UI が組み立てる git-sc 引数 (-a/-b/-y/--reword/<hex hash>) には `"` が含まれないため通常操作では踏まないが、helper としての仕様バグだった。既存の「ダブルクォート escape を期待する」テスト 2 件 (`a"b` → `"a\"b"` / `a\"b` → `"a\\\"b"`) を「throw を期待する」テストへ書き換え (`cmd\.exe cannot safely quote` パターン)、末尾バックスラッシュ倍化 (`end\` → `"end\\"`) のテストは `"` を含まない正常系として維持。`resolveSpawnCommand` の `"` reject はバックスラッシュ前置の有無 (`a"b` / `a\"b`) で揺れないことも回帰テストで固定。codex のセカンドレビューでも、cmd.exe string parser と CommandLineToArgvW の差異・shell injection 露出経路・helper 仕様バグとしての確実性を確認。
 - Vitest updated to 4.1.9.
 - **Security maintenance (undici audit override)**: `pnpm audit --audit-level moderate` で `@vscode/vsce` / `ovsx` → `cheerio` 経由の `undici` に既知脆弱性が検出されたため、`pnpm-workspace.yaml` の override を `undici@>=7.0.0 <7.28.0` -> `7.28.0` へ更新した。最新 8 系ではなく `cheerio@1.1.2` の `undici@^7.12.0` と互換性を保つ 7 系 patched 下限に留め、lockfile を再生成した。`dependencyOverrides.test.ts` に `undici` override の退行チェックを追加し、`pnpm audit --audit-level moderate` は `No known vulnerabilities found`、Vitest は 274 テスト全件パスへ戻した。
@@ -105,8 +107,6 @@ src/
 - **Refactor (commit / reword の spawn 重複解消)**: `runGitSc` と `rewordCommit` の `runGitScReword` に約 130 行重複していた `git-sc` の spawn + `withProgress` + キャンセル状態機械 (`isCancelled`/`settled`/`forceKillTimer`/`resolveOnce`/`rejectOnce`、`resolveSpawnCommand`、stdout/stderr・close/error/onCancellationRequested ハンドラ、SIGKILL 昇格、`git.refresh` 連携) を新規 `src/commands/spawnGitScProcess.ts` の `spawnGitScWithProgress({ outputChannel, workspaceRoot, args, messages })` へ抽出。security-sensitive な spawn/cancel ロジックを 1 箇所へ集約し、将来の修正漏れリスクを下げた。フロー固有の差分 (引数・進捗/成功/失敗/キャンセル文言) のみ `messages` で受け取り、表示文字列は旧実装とバイト一致を維持 (空 args 時の `Running: git-sc ` 末尾スペースを含む)。重複していた `showGitScNotFoundMessage` / `GIT_SC_INSTALLATION_URL` もヘルパーへ集約。挙動は不変で既存 249 テストは全てパスし、codex のセカンドレビューでも文言・分岐・状態機械の一致を確認。
 - Added regression tests for `escapeCmdArgument` の CommandLineToArgvW 互換エスケープのうち、これまで未カバーだった引数内ダブルクォート (`a"b` → `"a\"b"`) と末尾バックスラッシュの倍化 (`end\` → `"end\\"`) を `resolveSpawnCommand` 経由で検証するケースを追加。
 - Biome updated to 2.4.16.
-- @types/vscode updated to 1.120.0.
-- VS Code engine requirement updated to `^1.120.0` to match `@types/vscode` and keep `vsce package --no-dependencies` valid.
 - ovsx updated to 1.0.0.
 - Added pnpm 11 `allowBuilds` entries for `@vscode/vsce-sign`, `esbuild`, and `keytar`, so `pnpm install --frozen-lockfile` succeeds non-interactively after dependency updates.
 - Added regression test for rejecting same-name directories during Windows System32 executable resolution.
@@ -257,7 +257,7 @@ src/
 ## VS Code Extension Details
 
 - **Activation**: `workspaceContains:.git`
-- **Engine**: `vscode ^1.120.0`
+- **Engine**: `vscode ^1.125.0`
 - **Publisher**: owayo
 - **Commands**: 5 commands (4 commit variants + reword)
 - **Keybindings**: `Cmd+Shift+G C` (commit), `Cmd+Shift+G R` (reword)

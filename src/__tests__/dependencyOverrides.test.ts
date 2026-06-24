@@ -3,6 +3,16 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("dependency security overrides", () => {
+	it("keeps VS Code engine aligned with @types/vscode", () => {
+		const packageJson = JSON.parse(
+			readFileSync(join(process.cwd(), "package.json"), "utf-8"),
+		);
+		const vscodeTypesVersion = packageJson.devDependencies?.["@types/vscode"];
+
+		expect(typeof vscodeTypesVersion).toBe("string");
+		expect(packageJson.engines?.vscode).toBe(`^${vscodeTypesVersion}`);
+	});
+
 	it("keeps transitive dependency overrides at patched versions", () => {
 		const workspaceConfig = readFileSync(
 			join(process.cwd(), "pnpm-workspace.yaml"),

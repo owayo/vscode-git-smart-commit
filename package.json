@@ -12,7 +12,7 @@
 		"url": "https://github.com/owayo/vscode-git-smart-commit"
 	},
 	"engines": {
-		"vscode": "^1.120.0"
+		"vscode": "^1.125.0"
 	},
 	"categories": [
 		"SCM Providers",
@@ -148,7 +148,7 @@
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.0",
 		"@types/node": "^25.9.3",
-		"@types/vscode": "1.120.0",
+		"@types/vscode": "1.125.0",
 		"@vscode/vsce": "^3.9.2-1",
 		"ovsx": "^1.0.1",
 		"typescript": "^6.0.3",
