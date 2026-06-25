@@ -155,6 +155,20 @@ describe("getGitWorkspaceRoot", () => {
 		}
 	});
 
+	it("should return the Git root unchanged when output has no trailing newline", () => {
+		// git rev-parse --show-toplevel は通常末尾に LF を付けるが、万一 LF の無い出力でも
+		// パス本体を 1 文字削って破壊しないことを保証する (stripGitTrailingLineTerminator の
+		// 「改行なし → そのまま返す」防御分岐を固定)。末尾 1 文字を無条件に削る実装に退行すると
+		// 存在しない cwd で git-sc を spawn する余地が生じる。
+		mockExecFileSync.mockReturnValueOnce("/workspace/repo");
+
+		const workspaceRoot = getGitWorkspaceRoot([
+			{ uri: { fsPath: "/workspace/repo" } },
+		] as never);
+
+		expect(workspaceRoot).toBe("/workspace/repo");
+	});
+
 	it("should return null when no workspace folder is inside a Git repository", () => {
 		mockExecFileSync.mockImplementation(() => {
 			throw new Error("fatal: not a git repository");
