@@ -250,6 +250,19 @@ function escapeCmdArgument(value: string): string {
 		);
 	}
 
+	// cmd.exe は遅延環境変数展開 (delayed expansion) が有効な環境では、二重引用符の内側でも
+	// `!VAR!` を環境変数展開する。delayed expansion はレジストリ
+	// (`Command Processor\DelayedExpansion`) で全 cmd.exe に適用され得るため、`%` と同型の脅威になる。
+	// コマンドライン上で `!` を確実にエスケープする手段が存在しないので、`!` を含む実行ファイルパス/
+	// 引数 (例: `C:\Tools\!SC!\git-sc.cmd`) をそのまま渡すと、展開後の別パス・別値を実行してしまう
+	// 恐れがある。`%` と同様に `!` を拒否して誤実行を防ぐ。なお resolveSpawnCommand 側では
+	// cmd.exe を `/v:off` で起動して遅延展開自体も無効化しており、二重防御になっている。
+	if (value.includes("!")) {
+		throw new Error(
+			`Argument contains '!' which cmd.exe delayed expansion would expand: ${JSON.stringify(value)}`,
+		);
+	}
+
 	// cmd.exe は CommandLineToArgvW と異なり `\"` をエスケープとして解釈せず、
 	// `"` を string トグルとして扱う。`"a\"b"` のような CommandLineToArgvW 互換 escape を
 	// cmd.exe 経由経路で渡すと、cmd.exe 側の string parser では引用が途中で閉じ、その後の
@@ -346,7 +359,9 @@ export function resolveSpawnCommand(
 	const commandLine = buildCmdCommandLine(resolved, [...args]);
 	return {
 		command: cmdExe,
-		args: ["/d", "/s", "/c", commandLine],
+		// `/v:off` で遅延環境変数展開を無効化する。レジストリで delayed expansion が有効な環境でも
+		// `!VAR!` 展開によるパスリダイレクションを防ぐ (escapeCmdArgument の `!` 拒否との二重防御)。
+		args: ["/d", "/s", "/v:off", "/c", commandLine],
 		windowsVerbatimArguments: true,
 	};
 }

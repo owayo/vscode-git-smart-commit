@@ -133,4 +133,29 @@ describe("isCommandNotFoundError", () => {
 		].join("\r\n");
 		expect(isCommandNotFoundError(multiLineStderr)).toBe(true);
 	});
+
+	it("returns false for other hyphenated command names that merely contain 'git-sc'", () => {
+		// `git-sc` はハイフンを含むため、`\b` (単語境界) では `-` を非単語文字＝境界とみなし、
+		// `my-git-sc` や `git-sc-helper` のような別コマンド名の部分文字列にも誤マッチしていた。
+		// git-sc 自身は起動済みで、内部処理が別コマンド未検出により異常終了したケースを
+		// 「git-sc 未検出」と誤判定して誤ったインストール案内を出すのを防ぐため、これらは false。
+		// (lookaround で前後に単語文字・ハイフンが続かないことを要求する回帰固定。)
+		expect(isCommandNotFoundError("my-git-sc: command not found")).toBe(false);
+		expect(isCommandNotFoundError("zsh: command not found: my-git-sc")).toBe(
+			false,
+		);
+		expect(isCommandNotFoundError("command not found: git-sc-helper")).toBe(
+			false,
+		);
+		expect(
+			isCommandNotFoundError(
+				"'my-git-sc' is not recognized as an internal or external command",
+			),
+		).toBe(false);
+		expect(
+			isCommandNotFoundError(
+				"The term 'git-sc-helper' is not recognized as the name of a cmdlet",
+			),
+		).toBe(false);
+	});
 });

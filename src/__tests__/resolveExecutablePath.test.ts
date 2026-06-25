@@ -783,6 +783,7 @@ describe("resolveSpawnCommand", () => {
 			args: [
 				"/d",
 				"/s",
+				"/v:off",
 				"/c",
 				'""C:\\Program Files\\Git\\cmd\\git-sc.CMD" "-y""',
 			],
@@ -825,7 +826,7 @@ describe("resolveSpawnCommand", () => {
 
 		expect(resolveSpawnCommand("git-sc")).toEqual({
 			command: "C:\\Windows\\System32\\cmd.exe",
-			args: ["/d", "/s", "/c", '""C:\\bin\\git-sc.BAT""'],
+			args: ["/d", "/s", "/v:off", "/c", '""C:\\bin\\git-sc.BAT""'],
 			windowsVerbatimArguments: true,
 		});
 	});
@@ -871,6 +872,7 @@ describe("resolveSpawnCommand", () => {
 			args: [
 				"/d",
 				"/s",
+				"/v:off",
 				"/c",
 				'""C:\\Program Files\\Git Smart Commit\\bin\\git-sc.CMD" "-a" "-y""',
 			],
@@ -907,6 +909,7 @@ describe("resolveSpawnCommand", () => {
 			args: [
 				"/d",
 				"/s",
+				"/v:off",
 				"/c",
 				'""C:\\bin\\git-sc.CMD" "value&safe" "pipe|safe" "redir<safe>" "caret^safe""',
 			],
@@ -962,7 +965,7 @@ describe("resolveSpawnCommand", () => {
 
 		expect(result).toEqual({
 			command: "C:\\Windows\\System32\\cmd.exe",
-			args: ["/d", "/s", "/c", '""C:\\bin\\git-sc.CMD" "end\\\\""'],
+			args: ["/d", "/s", "/v:off", "/c", '""C:\\bin\\git-sc.CMD" "end\\\\""'],
 			windowsVerbatimArguments: true,
 		});
 	});
@@ -989,6 +992,52 @@ describe("resolveSpawnCommand", () => {
 		// 入力リテラルは a \ " b の 4 文字。`\` 前置の有無に関わらず " を含む引数は reject。
 		expect(() => resolveSpawnCommand("git-sc", ['a\\"b'])).toThrow(
 			/cmd\.exe cannot safely quote/,
+		);
+	});
+
+	it("Windows の cmd 経由起動で '!' を含む引数は reject する (delayed expansion 対策)", () => {
+		// cmd.exe は delayed expansion 有効時、二重引用符の内側でも `!VAR!` を環境変数展開する。
+		// `%` と同様にコマンドライン上で `!` を確実にエスケープする手段が無いため、`!` を含む
+		// 引数は早期に reject して別値の誤実行を防ぐ。
+		setPlatform("win32");
+		globalThis.process.env.PATH = "C:\\bin";
+		globalThis.process.env.PATHEXT = ".CMD";
+		globalThis.process.env.SystemRoot = "C:\\Windows";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (
+				p === "C:\\bin\\git-sc.CMD" ||
+				p === "C:\\Windows\\System32\\cmd.exe"
+			) {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		expect(() => resolveSpawnCommand("git-sc", ["a!VAR!b"])).toThrow(
+			/cmd\.exe delayed expansion would expand/,
+		);
+	});
+
+	it("Windows の cmd 経由起動で '!' を含む実行ファイルパスは reject する (delayed expansion 対策)", () => {
+		// 解決された git-sc.cmd 自体が `!VAR!` を含むディレクトリ (例 C:\Tools\!SC!) にある場合、
+		// delayed expansion でパスが書き換わり別ファイルを起動し得る。実行ファイルパスも
+		// escapeCmdArgument を通すため、`!` を含むパスは reject される (パスリダイレクション対策)。
+		setPlatform("win32");
+		globalThis.process.env.PATH = "C:\\Tools\\!SC!";
+		globalThis.process.env.PATHEXT = ".CMD";
+		globalThis.process.env.SystemRoot = "C:\\Windows";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (
+				p === "C:\\Tools\\!SC!\\git-sc.CMD" ||
+				p === "C:\\Windows\\System32\\cmd.exe"
+			) {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		expect(() => resolveSpawnCommand("git-sc", ["-y"])).toThrow(
+			/cmd\.exe delayed expansion would expand/,
 		);
 	});
 
