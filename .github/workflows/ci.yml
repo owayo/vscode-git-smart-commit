@@ -13,15 +13,19 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: "24"
-
+      # actions/setup-node@v5 は package-manager-cache が既定 true で、package.json の
+      # packageManager (pnpm) を検出して pnpm でキャッシュしようとする。pnpm/action-setup を
+      # 先に走らせて pnpm を PATH に通しておかないと "Unable to locate executable file: pnpm" で
+      # 失敗するため、Setup pnpm を Setup Node.js より前に配置する。
       - name: Setup pnpm
         uses: pnpm/action-setup@v5
         with:
           cache: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

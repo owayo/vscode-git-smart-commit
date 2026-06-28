@@ -33,15 +33,17 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: "24"
-
+      # pnpm を setup-node より先に導入する (setup-node@v5 の package-manager-cache 既定が
+      # package.json の packageManager=pnpm を検出し pnpm を要求するため)。
       - name: Setup pnpm
         uses: pnpm/action-setup@v5
         with:
           cache: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -117,15 +119,17 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: "24"
-
+      # pnpm を setup-node より先に導入する (setup-node@v5 の package-manager-cache 既定が
+      # package.json の packageManager=pnpm を検出し pnpm を要求するため)。
       - name: Setup pnpm
         uses: pnpm/action-setup@v5
         with:
           cache: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -146,15 +150,17 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: "24"
-
+      # pnpm を setup-node より先に導入する (setup-node@v5 の package-manager-cache 既定が
+      # package.json の packageManager=pnpm を検出し pnpm を要求するため)。
       - name: Setup pnpm
         uses: pnpm/action-setup@v5
         with:
           cache: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
