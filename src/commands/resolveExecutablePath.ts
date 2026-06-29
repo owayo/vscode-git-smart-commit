@@ -1,6 +1,8 @@
 import { accessSync, constants, statSync } from "node:fs";
 import * as path from "node:path";
 
+const DEFAULT_WINDOWS_PATH_EXTENSIONS = [".EXE", ".CMD", ".BAT", ".COM"];
+
 function getPathEnvValue(): string {
 	if (globalThis.process.env.PATH !== undefined) {
 		return globalThis.process.env.PATH;
@@ -46,6 +48,28 @@ function isExecutableFile(candidate: string): boolean {
 	} catch {
 		return false;
 	}
+}
+
+function isSafeWindowsPathExtension(extension: string): boolean {
+	// PATHEXT は拡張子の一覧であり、パス区切りやドライブ区切りを含む値は
+	// `path.win32.join(dir, name + ext)` の正規化で PATH 要素の外へ候補がずれる。
+	// `.CMD` のような純粋な拡張子だけを採用し、壊れた値は無視する。
+	return (
+		extension.startsWith(".") &&
+		extension.length > 1 &&
+		!/[\\/:]/.test(extension)
+	);
+}
+
+function getWindowsPathExtensions(): string[] {
+	const rawPathExt =
+		globalThis.process.env.PATHEXT ?? DEFAULT_WINDOWS_PATH_EXTENSIONS.join(";");
+	const pathExts = rawPathExt
+		.split(";")
+		.map((ext) => ext.trim())
+		.filter(isSafeWindowsPathExtension);
+
+	return pathExts.length > 0 ? pathExts : DEFAULT_WINDOWS_PATH_EXTENSIONS;
 }
 
 /**
@@ -101,15 +125,9 @@ export function resolveExecutableOnPath(name: string): string | null {
 	// 未設定と同じくデフォルトへフォールバックする。
 	// `??` だけでは空文字列を素通しし `pathExts` が空配列になり、
 	// Windows で `.EXE` / `.CMD` / `.BAT` / `.COM` の探索が一切走らず誤って未検出扱いになる。
-	const DEFAULT_PATH_EXT = ".EXE;.CMD;.BAT;.COM";
-	const rawPathExt = globalThis.process.env.PATHEXT ?? DEFAULT_PATH_EXT;
-	let pathExts = rawPathExt
-		.split(";")
-		.map((ext) => ext.trim())
-		.filter(Boolean);
-	if (pathExts.length === 0) {
-		pathExts = DEFAULT_PATH_EXT.split(";");
-	}
+	// さらに、`\..\evil.CMD` のようなパス区切りを含む壊れた要素は候補パスを
+	// PATH 要素の外へ正規化し得るため、純粋な拡張子だけを採用する。
+	const pathExts = isWindows ? getWindowsPathExtensions() : [];
 
 	for (const rawDir of pathDirs) {
 		const dir = isWindows ? rawDir.trim() : rawDir;

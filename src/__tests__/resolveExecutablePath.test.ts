@@ -384,6 +384,49 @@ describe("resolveExecutableOnPath", () => {
 		expect(result).toBe("C:\\tools\\git-sc.BAT");
 	});
 
+	it("PATHEXT のパス区切りを含む要素は探索候補から除外する", () => {
+		// PATHEXT は拡張子リストであり、`\..\evil.CMD` のような値を許すと
+		// `path.win32.join` の正規化で PATH 要素の外側が探索候補になり得る。
+		// 壊れた要素は無視し、純粋な拡張子だけで候補を作ることを固定する。
+		setPlatform("win32");
+		globalThis.process.env.PATH = "C:\\safe\\bin";
+		globalThis.process.env.PATHEXT = "\\..\\..\\evil.CMD;.CMD";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\safe\\evil.CMD") {
+				return mockFileStat(true);
+			}
+			if (p === "C:\\safe\\bin\\git-sc.CMD") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		const result = resolveExecutableOnPath("git-sc");
+
+		expect(result).toBe("C:\\safe\\bin\\git-sc.CMD");
+		expect(mockStatSync).not.toHaveBeenCalledWith("C:\\safe\\evil.CMD");
+	});
+
+	it("PATHEXT の有効な要素が 1 つもない場合はデフォルト拡張子へフォールバックする", () => {
+		setPlatform("win32");
+		globalThis.process.env.PATH = "C:\\tools";
+		globalThis.process.env.PATHEXT = "\\..\\evil.CMD";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\tools\\evil.CMD") {
+				return mockFileStat(true);
+			}
+			if (p === "C:\\tools\\git-sc.EXE") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		const result = resolveExecutableOnPath("git-sc");
+
+		expect(result).toBe("C:\\tools\\git-sc.EXE");
+		expect(mockStatSync).not.toHaveBeenCalledWith("C:\\tools\\evil.CMD");
+	});
+
 	it("returns the direct (extensionless) path when name already includes extension", () => {
 		setPlatform("win32");
 		globalThis.process.env.PATH = "C:\\tools";
