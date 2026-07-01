@@ -755,6 +755,48 @@ describe("resolveExecutableOnPath", () => {
 
 		expect(resolveWindowsSystemExecutable("taskkill")).toBeNull();
 	});
+
+	it("Windows で拡張子なし名は PATHEXT 不一致時に拡張子なしの実体を返す", () => {
+		// PATHEXT の各拡張子付き候補 (git-sc.EXE 等) がどれも存在せず、
+		// 拡張子なしの bare 名だけがファイルとして存在する場合のフォールバック分岐。
+		setPlatform("win32");
+		globalThis.process.env.PATH = "C:\\tools";
+		globalThis.process.env.PATHEXT = ".EXE;.CMD;.BAT;.COM";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\tools\\git-sc") {
+				return mockFileStat(true);
+			}
+			return mockFileStat(false);
+		});
+
+		expect(resolveExecutableOnPath("git-sc")).toBe("C:\\tools\\git-sc");
+		// 拡張子付き候補を先に全て試したうえで bare 名にフォールバックする
+		expect(mockStatSync).toHaveBeenCalledWith("C:\\tools\\git-sc.EXE");
+		expect(mockStatSync).toHaveBeenCalledWith("C:\\tools\\git-sc");
+	});
+
+	it("resolveNativeExecutableOnPath は POSIX では resolveExecutableOnPath に委譲する", () => {
+		// POSIX には .cmd/.bat の概念が無いため、native 解決は通常の PATH 解決と同一になる。
+		setPlatform("linux");
+		globalThis.process.env.PATH = "/usr/local/bin:/usr/bin";
+		mockAccessSync.mockImplementation((p: unknown) => {
+			if (p === "/usr/bin/git") {
+				return;
+			}
+			throw new Error("not executable");
+		});
+
+		expect(resolveNativeExecutableOnPath("git")).toBe("/usr/bin/git");
+	});
+
+	it("resolveWindowsSystemExecutable は非 Windows では常に null を返す", () => {
+		// System32 は Windows 固有のため、POSIX では解決を試みず即 null を返す。
+		setPlatform("darwin");
+		globalThis.process.env.SystemRoot = "C:\\Windows";
+
+		expect(resolveWindowsSystemExecutable("taskkill")).toBeNull();
+		expect(mockStatSync).not.toHaveBeenCalled();
+	});
 });
 
 describe("resolveSpawnCommand", () => {

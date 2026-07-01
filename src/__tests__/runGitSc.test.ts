@@ -500,6 +500,36 @@ describe("runGitSc", () => {
 		).toBe(false);
 	});
 
+	it("should ignore a late error event fired after successful close", async () => {
+		// close(0) で settled になった後に、まれに error イベントが遅れて発火するケース。
+		// error ハンドラは settled ガードで早期 return し、成功通知の後に失敗通知や
+		// "Failed to start git-sc" ログを二重に出さないことを確認する。
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => {
+			proc.__emit("close", 0);
+			proc.__emit("error", new Error("late error after close"));
+		}, 10);
+
+		await promise;
+
+		// 成功通知は 1 回だけ、失敗通知は出ない
+		expect(mockShowInformationMessage).toHaveBeenCalledTimes(1);
+		expect(mockShowErrorMessage).not.toHaveBeenCalled();
+		// error 経由の "Failed to start git-sc" ログも出力されない
+		const lateErrorCalls = (
+			mockOutputChannel.appendLine as ReturnType<typeof vi.fn>
+		).mock.calls.map((c) => c[0] as string);
+		expect(
+			lateErrorCalls.some((line) => line.includes("Failed to start git-sc")),
+		).toBe(false);
+	});
+
 	it("should capture stdout output", async () => {
 		const proc = createMockProcess();
 		mockSpawn.mockReturnValue(proc);
@@ -1677,6 +1707,47 @@ describe("runGitSc", () => {
 		await promise;
 		expect(mockShowInformationMessage).not.toHaveBeenCalled();
 		expect(mockExecuteCommand).not.toHaveBeenCalledWith("git.refresh");
+	});
+
+	it("キャンセル後に deactivate が来てもプロセスを二重終了しない", async () => {
+		// ユーザーキャンセル (isCancelled=true、close 未達で active map に残存) の直後に
+		// deactivate 相当の terminateActiveGitScProcesses が走るレース。shutdown ハンドラは
+		// isCancelled を見て早期 return し、terminateProcessForCancellation を再実行しない。
+		const { terminateActiveGitScProcesses } = await import(
+			"../commands/spawnGitScProcess"
+		);
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		let cancelHandler: (() => void) | undefined;
+		mockWithProgress.mockImplementationOnce(
+			async (
+				_options: unknown,
+				callback: (progress: unknown, token: unknown) => Promise<void>,
+			) => {
+				const progress = { report: vi.fn() };
+				const token = {
+					onCancellationRequested: vi.fn((handler: () => void) => {
+						cancelHandler = handler;
+					}),
+					isCancellationRequested: false,
+				};
+
+				const progressPromise = callback(progress, token);
+				// ユーザーキャンセル: isCancelled=true、ただし close 未達なので map に残る
+				cancelHandler?.();
+				// deactivate 相当: すでに isCancelled のため shutdown ハンドラは早期 return する
+				terminateActiveGitScProcesses(mockOutputChannel as never);
+				// close 到達でキャンセル扱いのまま resolve
+				setTimeout(() => proc.__emit("close", null), 10);
+				return progressPromise;
+			},
+		);
+
+		await runGitSc(mockOutputChannel as never, { autoConfirm: true });
+
+		// kill はキャンセル時の 1 回だけ (deactivate では再送されない)
+		expect(proc.kill).toHaveBeenCalledTimes(1);
 	});
 
 	it("resolveSpawnCommand が throw した場合は明示的にエラー通知して reject する", async () => {
