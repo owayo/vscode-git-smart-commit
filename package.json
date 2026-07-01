@@ -146,11 +146,11 @@
 		"test": "vitest run"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "^2.5.0",
+		"@biomejs/biome": "^2.5.1",
 		"@types/node": "^26.0.0",
 		"@types/vscode": "1.125.0",
 		"@vscode/vsce": "^3.9.2-1",
-		"ovsx": "^1.0.1",
+		"ovsx": "^1.0.2",
 		"typescript": "^6.0.3",
 		"vitest": "^4.1.9"
 	}
