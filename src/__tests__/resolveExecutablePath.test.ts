@@ -535,6 +535,40 @@ describe("resolveExecutableOnPath", () => {
 		expect(resolveNativeExecutableOnPath("git.CMD")).toBeNull();
 	});
 
+	it("Windows の native 実行ファイル解決では直接指定された .exe を絶対パスで返す", () => {
+		// directExtension が .exe の場合は allowlist を通過し、指定名そのものだけを
+		// 候補にする (resolveExecutablePath.ts の candidateNames = [name] 正常系)。
+		// PATHEXT 変種 (git.exe.EXE 等) を連結しないことも併せて固定する。
+		setPlatform("win32");
+		globalThis.process.env.PATH = "C:\\tools";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\tools\\git.exe") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		expect(resolveNativeExecutableOnPath("git.exe")).toBe("C:\\tools\\git.exe");
+		// 指定名そのものだけを確認し、PATHEXT 連結候補は探索しない
+		expect(mockStatSync).toHaveBeenCalledTimes(1);
+		expect(mockStatSync).toHaveBeenCalledWith("C:\\tools\\git.exe");
+	});
+
+	it("Windows の native 実行ファイル解決では直接指定された .COM (大文字) を絶対パスで返す", () => {
+		// extname が大文字 .COM でも toLowerCase() で allowlist 判定され、native 実行
+		// ファイルとして受理される (.exe/.com の大文字小文字非依存判定の回帰固定)。
+		setPlatform("win32");
+		globalThis.process.env.PATH = "C:\\tools";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\tools\\git.COM") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		expect(resolveNativeExecutableOnPath("git.COM")).toBe("C:\\tools\\git.COM");
+	});
+
 	it("resolveExecutableOnPath は Windows の drive-relative な PATH 要素 (\\Tools) を除外する", () => {
 		// path.win32.isAbsolute("\\Tools") は true だが drive-relative であり、実行時の
 		// current drive 依存で fully-qualified ではないため、絶対パスとして拾ってはならない。
@@ -617,6 +651,26 @@ describe("resolveExecutableOnPath", () => {
 
 		expect(resolveWindowsSystemExecutable("taskkill")).toBe(
 			"C:\\Windows\\System32\\taskkill.exe",
+		);
+	});
+
+	it("Windows の System32 実行ファイル解決は .exe 付きの名前をそのまま使う", () => {
+		// 呼び出し側は拡張子なし ("cmd"/"taskkill") で渡すが、.exe 付きで渡された場合は
+		// 二重に .exe を付けず (cmd.exe.exe にしない) そのまま使う分岐 (endsWith(".exe"))。
+		setPlatform("win32");
+		globalThis.process.env.SystemRoot = "C:\\Windows";
+		mockStatSync.mockImplementation((p: unknown) => {
+			if (p === "C:\\Windows\\System32\\cmd.exe") {
+				return mockFileStat(true);
+			}
+			throw new Error("not found");
+		});
+
+		expect(resolveWindowsSystemExecutable("cmd.exe")).toBe(
+			"C:\\Windows\\System32\\cmd.exe",
+		);
+		expect(mockStatSync).not.toHaveBeenCalledWith(
+			"C:\\Windows\\System32\\cmd.exe.exe",
 		);
 	});
 
