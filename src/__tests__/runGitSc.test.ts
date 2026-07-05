@@ -1211,6 +1211,52 @@ describe("runGitSc", () => {
 		expect(mockExecuteCommand).not.toHaveBeenCalledWith("git.refresh");
 	});
 
+	it("should preserve multibyte stdout split across stream chunks", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => {
+			// "あ" (E3 81 82) を意図的に分割し、UTF-8 境界をまたぐ出力を再現する。
+			proc.stdout?.push(Buffer.from([0xe3, 0x81]));
+			proc.stdout?.push(Buffer.from([0x82]));
+			proc.__emit("close", 0);
+		}, 10);
+		await promise;
+
+		const appended = mockOutputChannel.append.mock.calls
+			.map((c: unknown[]) => c[0])
+			.join("");
+		expect(appended).toContain("あ");
+		expect(appended).not.toContain("�");
+	});
+
+	it("should preserve multibyte stderr split across stream chunks", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => {
+			// エラー出力側でも同じ UTF-8 境界分割を再現する。
+			proc.stderr?.push(Buffer.from([0xe3, 0x81]));
+			proc.stderr?.push(Buffer.from([0x82]));
+			proc.__emit("close", 1);
+		}, 10);
+
+		await expect(promise).rejects.toThrow("あ");
+		const appended = mockOutputChannel.append.mock.calls
+			.map((c: unknown[]) => c[0])
+			.join("");
+		expect(appended).toContain("あ");
+		expect(appended).not.toContain("�");
+	});
+
 	it("should write spawn error marker to outputChannel", async () => {
 		const proc = createMockProcess();
 		mockSpawn.mockReturnValue(proc);

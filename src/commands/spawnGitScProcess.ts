@@ -227,14 +227,19 @@ export async function spawnGitScWithProgress({
 				let stdout = "";
 				let stderr = "";
 
-				process.stdout.on("data", (data: Buffer) => {
-					const text = data.toString();
+				// UTF-8 の複数バイト文字がチャンク境界で分割されても、StringDecoder に
+				// 境界を保持させて U+FFFD への置換による文字化けを防ぐ。
+				process.stdout.setEncoding("utf8");
+				process.stderr.setEncoding("utf8");
+
+				process.stdout.on("data", (data: string | Buffer) => {
+					const text = typeof data === "string" ? data : data.toString("utf8");
 					stdout += text;
 					outputChannel.append(text);
 				});
 
-				process.stderr.on("data", (data: Buffer) => {
-					const text = data.toString();
+				process.stderr.on("data", (data: string | Buffer) => {
+					const text = typeof data === "string" ? data : data.toString("utf8");
 					stderr += text;
 					outputChannel.append(text);
 				});
