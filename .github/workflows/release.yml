@@ -51,7 +51,7 @@ jobs:
       - name: Bump version
         id: bump
         run: |
-          # Use 2-digit year (YY) format
+          # 2 桁の年 (YY) 形式を使う
           YEAR=$(date +%y)
           MONTH=$(date +%-m)
 
@@ -75,7 +75,7 @@ jobs:
           NEW_VERSION="${YEAR}.${MONTH}.${NEW_COUNTER}"
           echo "New version: ${NEW_VERSION}"
 
-          # Update package.json
+          # package.json を更新する
           sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${NEW_VERSION}\"/" package.json
 
           echo "version=${NEW_VERSION}" >> $GITHUB_OUTPUT

@@ -1,27 +1,27 @@
 # vscode-git-smart-commit
 
-VS Code extension for running git-sc (AI-powered smart commit message generator).
+git-sc (AI によるスマートコミットメッセージ生成) を VS Code から実行する拡張機能。
 
-## Project Overview
+## プロジェクト概要
 
-- **Type**: VS Code Extension (TypeScript)
-- **Package Manager**: pnpm
-- **Build System**: TypeScript compiler (`tsc`)
-- **Test Framework**: Vitest (`vitest run`)
+- **種別**: VS Code Extension (TypeScript)
+- **パッケージマネージャ**: pnpm
+- **ビルドシステム**: TypeScript compiler (`tsc`)
+- **テストフレームワーク**: Vitest (`vitest run`)
 - **Linter**: Biome (`biome.jsonc`)
-- **pnpm settings**: `pnpm-workspace.yaml` (`overrides` for patched transitive dependencies, `allowBuilds` for approved install scripts)
-- **Entry Point**: `src/extension.ts` -> `dist/extension.js`
+- **pnpm 設定**: `pnpm-workspace.yaml` (patched transitive dependency 用 `overrides`、承認済み install script 用 `allowBuilds`)
+- **エントリポイント**: `src/extension.ts` -> `dist/extension.js`
 
-## Commands
+## コマンド
 
 ```bash
-# Install dependencies
+# 依存関係をインストール
 pnpm install
 
-# Compile
+# コンパイル
 pnpm run compile
 
-# Watch mode
+# ウォッチモード
 pnpm run watch
 
 # Lint
@@ -33,37 +33,37 @@ pnpm run format
 # Test
 pnpm run test
 
-# Package VSIX
+# VSIX パッケージ作成
 pnpm exec vsce package --no-dependencies
 ```
 
-## Architecture
+## アーキテクチャ
 
 ```
 src/
-  extension.ts              # Extension entry point (activate/deactivate)
+  extension.ts              # 拡張機能エントリポイント (activate/deactivate)
   commands/
-    getGitWorkspaceRoot.ts  # Resolve the first Git repository root from open workspace folders
+    getGitWorkspaceRoot.ts  # 開いている workspace folders から最初の Git repository root を解決
     runGitSc.ts             # commit フローのオプション組み立て + 共通 spawn ヘルパー呼び出し
     rewordCommit.ts         # Commit reword UI + git log parsing + 共通 spawn ヘルパー呼び出し
     spawnGitScProcess.ts    # commit / reword 共通の git-sc spawn + 進捗 + キャンセル状態機械
-    isCommandNotFoundError.ts # Cross-platform command-not-found detection
-    terminateProcessForCancellation.ts # Safe cancellation helper for POSIX and Windows
+    isCommandNotFoundError.ts # platform 横断の command-not-found 判定
+    terminateProcessForCancellation.ts # POSIX / Windows の安全なキャンセル補助
     resolveExecutablePath.ts # PATH 走査による実行ファイル絶対パス解決 (cwd ハイジャック対策)
   __tests__/
     dependencyOverrides.test.ts # pnpm override と package metadata の退行テスト
-    extension.test.ts       # Extension activation tests
-    getGitWorkspaceRoot.test.ts # Git workspace root resolution tests
+    extension.test.ts       # 拡張機能 activation のテスト
+    getGitWorkspaceRoot.test.ts # Git workspace root 解決テスト
     isCommandNotFoundError.test.ts # Command-not-found判定のテスト
     rewordCommit.test.ts    # getRecentCommits & rewordCommit tests
     runGitSc.test.ts        # runGitSc command tests
-    terminateProcessForCancellation.test.ts # Cancellation helper tests
+    terminateProcessForCancellation.test.ts # キャンセル補助のテスト
     resolveExecutablePath.test.ts # PATH 解決ロジックのユニットテスト
 ```
 
-### Key Patterns
+### 主要パターン
 
-- Commands are registered in `activate()` and added to `context.subscriptions`
+- Commands は `activate()` で登録し、`context.subscriptions` に追加する
 - `git-sc` の spawn / `withProgress` 進捗表示 / キャンセル状態機械は commit フロー (`runGitSc`) と reword フロー (`runGitScReword`) で完全に同一のため、`spawnGitScProcess.ts` の `spawnGitScWithProgress({ outputChannel, workspaceRoot, args, messages })` に集約している。呼び出し側は引数とフロー固有の表示文言 (`messages`) だけを渡す。`showGitScNotFoundMessage` / `GIT_SC_INSTALLATION_URL` もこのヘルパー内に定義する。
 - External process execution uses `child_process.spawn` with **`shell: false` を全 platform で固定**。`git-sc` は `resolveSpawnCommand(name, args)` で絶対パスに解決した上で起動する。PATH 走査は完全修飾された絶対パス要素 (Windows は drive-qualified `C:\` / UNC `\\` のみ。`\foo` のような drive-relative パスは current drive 依存のため除外) だけを許容し、空要素・`.`・相対パスも全て除外することで cwd ハイジャック (悪意ある repo 直下や別ドライブの `git-sc` / `git-sc.cmd` 優先実行) を防ぐ。Windows の `PATHEXT` は `.EXE` のような純粋な拡張子だけを採用し、パス区切りやドライブ区切りを含む壊れた要素は探索候補から除外することで、`path.win32.join` の正規化により候補パスが PATH 要素の外へずれるのを防ぐ。
   - **POSIX**: `detached: true` で起動し子プロセスがプロセスグループのリーダーになる。キャンセル時は `process.kill(-pid, "SIGTERM")` でプロセスグループ全体へ送信し、`git-sc` が起動した `git` 等の孫プロセスもまとめて終了させる。`process.kill(-pid)` が失敗した場合は直接の子プロセスへ `SIGTERM` をフォールバック送信する。SIGTERM を `trap "" TERM` 等で無視するプロセスに備え、5 秒経過しても `close` が来ない場合は SIGKILL に昇格してプロセスグループを強制終了する。`close` / `error` 到着時は `forceKillTimer` をクリアして余計な SIGKILL を送らない。
@@ -73,16 +73,17 @@ src/
 - Cancellation はキャンセルハンドラ内で `resolveOnce()` を呼ばず、`close` イベントでプロセス (および POSIX ではプロセスグループ) の終了を確認してから resolve する。これにより、キャンセル直後に終了未確定のまま VS Code 上で成功扱いになり、`git-sc` の子孫プロセスが裏で走り続ける事象を防ぐ。
 - 実行中の `git-sc` 子プロセスは `spawnGitScProcess.ts` の module-level `Map<ChildProcess, () => void>` で「プロセス → 終了ハンドラ」を追跡し (spawn 後に登録、`close`/`error` で delete)、拡張機能の `deactivate()` から `terminateActiveGitScProcesses(outputChannel)` を呼んで一括終了する。これにより VS Code の reload / 終了 / 拡張停止時に、POSIX で `detached` 起動した `git-sc` とその子孫が孤児として残らないようにする。終了ハンドラは `isCancelled` を立ててから SIGTERM (Windows は `taskkill /T /F`) で終了させるため、拡張停止に伴う `close` が「キャンセル」扱いになり、誤った成功/失敗通知や `git.refresh` を出さない。
 - Git CLI 呼び出しは `resolveNativeExecutableOnPath("git")` で `.exe`/`.com` 等の native 実行ファイルを絶対パスに解決してから `execFileSync(<gitPath>, ["-C", <dir>, ...])` で実行する。bare command と `cwd: <dir>` を使わないことで、Windows の `CreateProcess` がカレントディレクトリを実行ファイル探索パスに含める cwd ハイジャックを回避する。`git rev-parse --show-toplevel` の出力は Git が付与する末尾改行だけを除去し、実在するリポジトリパス末尾の空白は保持する。
-- Commands resolve the first reachable Git repository root across open workspace folders before running `git-sc` or `git log`
+- Commands は `git-sc` / `git log` を実行する前に、開いている workspace folders から最初に到達可能な Git repository root を解決する
 - Output is displayed via VS Code `OutputChannel`; `git-sc` の stdout/stderr は `setEncoding("utf8")` で UTF-8 ストリームとしてデコードし、日本語などの複数バイト文字がチャンク境界で分割されても `�` に置換されないようにする。
-- Progress is shown via `vscode.window.withProgress`
-- Cancellation is guarded to avoid false error notifications after process kill
-- Configuration is read from `vscode.workspace.getConfiguration("gitSmartCommit")`
+- Progress は `vscode.window.withProgress` で表示する
+- Cancellation は process kill 後の誤った error notification を避けるようガードする
+- Configuration は `vscode.workspace.getConfiguration("gitSmartCommit")` から読む
 - `vscode.commands.executeCommand("git.refresh")` の戻り値（Thenable）は `Promise.resolve(...).catch(...)` で囲み、Git 拡張が無効化されている等で reject した場合に未処理 rejection にせず `OutputChannel` に警告を記録する。
 - インストール案内ダイアログの "View Installation" から `vscode.env.openExternal(...)` を呼ぶ経路も `Promise.resolve(...).catch(...)` で囲み、URL オープン失敗時は未処理 rejection にせず `OutputChannel` に警告を記録する。
 
 ## Recent Maintenance Notes
 
+- `depup --install --include-pinned` は更新なし、`biome migrate --write` は no-op、`pnpm audit --audit-level moderate` は `No known vulnerabilities found` を維持。コードベース全体を再レビューし、確実な実装バグとして修正すべき箇所は見つからなかった一方、`pnpm-workspace.yaml` の security override が `dependencyOverrides.test.ts` で一部しか固定されていなかったため、現在の audit clean 状態を支える override 全体を退行テストで固定した。あわせて workflow 内の英語コメントを日本語化した。`pnpm run lint` / `pnpm run test` (291 tests) / `pnpm run compile` / `pnpm exec vsce package --no-dependencies` は成功し、CodeRabbit CLI (`coderabbit review --agent --type uncommitted`) は findings 0、`astro-sight review --dir . --git` も unresolved impact / missing cochange / API diff / dead symbols なし。
 - @types/node updated to 26.0.1 (patch). 型定義のみの patch 更新でメジャー更新は無く、`biome migrate --write` は no-op、`pnpm audit --audit-level moderate` は `No known vulnerabilities found` を維持。あわせて Gemini 3.1 Pro (High) のセカンドオピニオンでコードベース全体をクロスチェックし、確実なバグとして `spawnGitScWithProgress` の stdout/stderr `Buffer.toString()` 直変換が UTF-8 複数バイト文字の途中でチャンク分割された場合に U+FFFD へ置換して復元不能な文字化けを起こす点を採用修正した。`process.stdout.setEncoding("utf8")` / `process.stderr.setEncoding("utf8")` を設定して Node の StringDecoder に境界保持させ、stdout/stderr それぞれで `"あ"` の UTF-8 バイト列を分割投入しても `�` を含まず正しく出力される回帰テストを追加した (総テスト 291 件)。CodeRabbit CLI (`coderabbit review --agent --type uncommitted`) は指摘 0 件、`astro-sight review --dir . --git` も unresolved impact / missing cochange / API diff / dead symbols なし。
 - Added regression tests for v8 カバレッジ計測により判明した「到達可能だが未カバーだった 5 つの実挙動」。(1) `resolveExecutableOnPath` の Windows で拡張子なし名が `PATHEXT` の全拡張子付き候補 (`git-sc.EXE` 等) に一致せず、拡張子なしの bare 名の実体へフォールバックする分岐 (`resolveExecutablePath.ts:170`)、(2) `resolveNativeExecutableOnPath` が POSIX では `resolveExecutableOnPath` へ委譲する分岐 (同 `:185`)、(3) `resolveWindowsSystemExecutable` が非 Windows では解決を試みず即 `null` を返す分岐 (同 `:227`)、(4) ユーザーキャンセル直後 (`isCancelled=true` かつ `close` 未達で active map に残存) に deactivate 相当の `terminateActiveGitScProcesses` が走っても shutdown ハンドラが `if (isCancelled || settled) return` で早期 return し、`terminateProcessForCancellation` を再実行してプロセスを二重終了しない race (`spawnGitScProcess.ts:220`)、(5) 正常 `close(0)` で `settled` になった後に遅延 `error` イベントが発火しても、error ハンドラが `settled` ガードで早期 return し、成功通知の後に失敗通知/`Failed to start git-sc` ログを二重に出さない race (同 `:292`)。いずれも security-sensitive な PATH 絶対パス解決とキャンセル状態機械の実挙動で、退行するとそれぞれ Windows の実行ファイル探索・cwd ハイジャック対策・二重終了/二重通知防止が壊れる。追加により対象 2 ファイル (`resolveExecutablePath.ts` / `spawnGitScProcess.ts`) の statement カバレッジを 100% へ、総テストを 289 件へ引き上げた (残る未カバーは `error instanceof Error ? … : String(error)` 等の防御的分岐と、`updateStatusBarVisibility` の到達不能な `!statusBarItem` ガードのみ)。あわせて codex のセカンドオピニオン (gpt-5.5) でコードベース全体をバグ探索クロスチェックし、確実なバグ無しを独立に確認した。
 - Added regression tests for `resolveNativeExecutableOnPath` が直接指定された `.exe` / `.com` (大文字 `.COM` 含む) を native 実行ファイルとして受理する正常系と、`resolveWindowsSystemExecutable` が `.exe` 付きで渡された名前に二重で `.exe` を付けずそのまま使う分岐 (`endsWith(".exe")`)。既存テストは拡張子なし指定・`.cmd`/`.bat` 拒否のみをカバーしており、`.exe`/`.com` を直接指定して受理される経路 (`candidateNames = [name]` 分岐と allowlist の `.toLowerCase()` 大文字小文字非依存判定) と `.exe` 二重付与回避分岐が未カバーだった。誤って allowlist から `.exe`/`.com` を落とす・`.exe` を無条件付与する実装に退行すると、`taskkill` / `git` の native 実行ファイル解決が壊れて cwd ハイジャック対策の絶対パス起動が機能しなくなるため回帰固定した (284 テストへ)。あわせて codex のセカンドオピニオン (gpt-5.5) でコードベース全体をバグ探索クロスチェックし、確実なバグ無しを独立に確認した。
