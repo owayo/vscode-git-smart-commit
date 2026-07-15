@@ -174,6 +174,20 @@ describe("resolveExecutableOnPath", () => {
 		expect(mockStatSync).not.toHaveBeenCalled();
 	});
 
+	it("Windows で PATH 系環境変数が一切未定義の場合は null を返す", () => {
+		// Windows の大文字小文字 fallback (`Path` / `path`) も含めて全て不在のとき、
+		// `getPathEnvValue()` は空文字列を返し、探索を一切行わず null を返す。
+		// 誤って探索が走ると偽 PATH ハイジャックの余地が生じるため安全側の挙動を固定する。
+		setPlatform("win32");
+		delete globalThis.process.env.PATH;
+		delete globalThis.process.env.Path;
+		delete globalThis.process.env.path;
+
+		expect(resolveExecutableOnPath("git-sc")).toBeNull();
+		expect(mockAccessSync).not.toHaveBeenCalled();
+		expect(mockStatSync).not.toHaveBeenCalled();
+	});
+
 	it("returns the absolute path when found in PATH on Windows", () => {
 		setPlatform("win32");
 		globalThis.process.env.PATH = "C:\\tools;C:\\Program Files\\Git\\cmd";

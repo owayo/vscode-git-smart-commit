@@ -134,9 +134,17 @@ describe("extension", () => {
 		expect(() => deactivate()).not.toThrow();
 	});
 
-	it("should deactivate safely before activation", () => {
-		// outputChannel が未初期化でもエラーにならない（?. によるガード）
-		expect(() => deactivate()).not.toThrow();
+	it("should deactivate safely before activation", async () => {
+		// beforeEach の import はモジュールキャッシュを共有するため、先行テストの
+		// activate で module-level の outputChannel が設定済みになる。
+		// resetModules で本当に「activate 前」の新規モジュールインスタンスを作り、
+		// outputChannel 未初期化でもエラーにならないこと (`if (outputChannel)` ガードと
+		// `?.` ガード) と、terminateActiveGitScProcesses が呼ばれないことを検証する。
+		vi.resetModules();
+		const freshExt = await import("../extension");
+
+		expect(() => freshExt.deactivate()).not.toThrow();
+		expect(mockTerminateActiveGitScProcesses).not.toHaveBeenCalled();
 	});
 
 	it("should hide status bar when showStatusBarButton is false", () => {

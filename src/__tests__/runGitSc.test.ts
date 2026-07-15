@@ -1731,6 +1731,18 @@ describe("runGitSc", () => {
 		).toBe(true);
 	});
 
+	it("terminateActiveGitScProcesses はアクティブなプロセスが無ければ何も出力しない", async () => {
+		// 通常の deactivate (git-sc 実行中でない) で走る経路。プロセス 0 件のときは
+		// "Terminating ... on shutdown" の警告ログを出さず、静かに終了する。
+		const { terminateActiveGitScProcesses } = await import(
+			"../commands/spawnGitScProcess"
+		);
+
+		terminateActiveGitScProcesses(mockOutputChannel as never);
+
+		expect(mockOutputChannel.appendLine).not.toHaveBeenCalled();
+	});
+
 	it("terminateActiveGitScProcesses は実行中プロセスを終了し、その close は成功通知を出さない (deactivate 用)", async () => {
 		const { terminateActiveGitScProcesses } = await import(
 			"../commands/spawnGitScProcess"
