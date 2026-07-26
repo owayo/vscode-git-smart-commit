@@ -11,6 +11,7 @@ node_modules/**
 .DS_Store
 tsconfig.json
 tsconfig.tsbuildinfo
+coverage/**
 biome.jsonc
 vitest.config.ts
 pnpm-lock.yaml

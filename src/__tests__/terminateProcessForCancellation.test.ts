@@ -94,6 +94,26 @@ describe("terminateProcessForCancellation", () => {
 		}
 	});
 
+	it("SIGTERM 送信失敗の throw 値が Error でなくても文字列化して記録する", () => {
+		// JS は任意の値を throw できる。catch 内の String(error) 分岐が退行して
+		// "[object Object]" 警告にならないよう回帰固定する。
+		setPlatform("darwin");
+		try {
+			const child = createMockProcess();
+			vi.mocked(child.kill).mockImplementationOnce(() => {
+				throw "kill exploded";
+			});
+
+			terminateProcessForCancellation(child, outputChannel as never);
+
+			expect(outputChannel.appendLine).toHaveBeenCalledWith(
+				"\n⚠️ Failed to send SIGTERM: kill exploded",
+			);
+		} finally {
+			restorePlatform();
+		}
+	});
+
 	it("Windows では taskkill でプロセスツリーを終了する", () => {
 		setPlatform("win32");
 		try {
@@ -238,6 +258,28 @@ describe("terminateProcessForCancellation", () => {
 
 			expect(outputChannel.appendLine).toHaveBeenCalledWith(
 				"\n⚠️ Failed to start taskkill: spawn taskkill EACCES",
+			);
+			expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+		} finally {
+			restorePlatform();
+		}
+	});
+
+	it("taskkill の同期起動エラーの throw 値が Error でなくても文字列化して記録する", () => {
+		// spawn が非 Error 値を throw した場合も String(error) で文字列化して記録し、
+		// SIGTERM フォールバックへ進む分岐の回帰テスト。
+		setPlatform("win32");
+		try {
+			const child = createMockProcess();
+			Object.defineProperty(child, "pid", { value: 6262, configurable: true });
+			mockSpawn.mockImplementationOnce(() => {
+				throw "spawn exploded";
+			});
+
+			terminateProcessForCancellation(child, outputChannel as never);
+
+			expect(outputChannel.appendLine).toHaveBeenCalledWith(
+				"\n⚠️ Failed to start taskkill: spawn exploded",
 			);
 			expect(child.kill).toHaveBeenCalledWith("SIGTERM");
 		} finally {

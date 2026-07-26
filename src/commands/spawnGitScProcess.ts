@@ -8,6 +8,15 @@ import { terminateProcessForCancellation } from "./terminateProcessForCancellati
 const GIT_SC_INSTALLATION_URL =
 	"https://github.com/owayo/git-smart-commit#installation";
 
+/** キャンセル後にプロセスグループの消滅を確認するポーリング間隔 (ms) */
+const PROCESS_GROUP_EXIT_POLL_INTERVAL_MS = 50;
+/**
+ * プロセスグループ消滅待ちの上限 (ms)。SIGKILL 昇格 (キャンセルから 5 秒) の後も
+ * さらに猶予を持たせた値。SIGKILL でも消えない異常系 (uninterruptible sleep 等) で
+ * 進捗表示が永久に残らないよう、超過時は警告を出して resolve する。
+ */
+const PROCESS_GROUP_EXIT_WAIT_LIMIT_MS = 10_000;
+
 /**
  * 実行中の git-sc 子プロセスと、その「拡張停止時の終了ハンドラ」の対応表。
  * spawn 後に登録し、`close` / `error` で除去する。拡張機能の deactivate
@@ -138,6 +147,8 @@ export async function spawnGitScWithProgress({
 				let isCancelled = false;
 				let settled = false;
 				let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
+				let groupExitPollTimer: ReturnType<typeof setTimeout> | undefined;
+				let groupExitWaitedMs = 0;
 
 				const clearForceKillTimer = (): void => {
 					if (forceKillTimer !== undefined) {
@@ -146,10 +157,18 @@ export async function spawnGitScWithProgress({
 					}
 				};
 
+				const clearGroupExitPollTimer = (): void => {
+					if (groupExitPollTimer !== undefined) {
+						clearTimeout(groupExitPollTimer);
+						groupExitPollTimer = undefined;
+					}
+				};
+
 				const resolveOnce = (): void => {
 					if (!settled) {
 						settled = true;
 						clearForceKillTimer();
+						clearGroupExitPollTimer();
 						resolve();
 					}
 				};
@@ -158,6 +177,7 @@ export async function spawnGitScWithProgress({
 					if (!settled) {
 						settled = true;
 						clearForceKillTimer();
+						clearGroupExitPollTimer();
 						reject(error);
 					}
 				};
@@ -212,17 +232,106 @@ export async function spawnGitScWithProgress({
 					env: { ...globalThis.process.env, FORCE_COLOR: "0" },
 					windowsHide: true,
 				});
+				const forceShutdownTerminate = (): void => {
+					if (settled) {
+						return;
+					}
+					// ユーザーキャンセル直後の close/error 未達区間で deactivate が来た場合、
+					// 通常の SIGTERM 完了待ちを続けると拡張ホスト終了時に昇格タイマーも失われる。
+					// POSIX は即 SIGKILL へ昇格し、Windows は taskkill /T /F を再実行して
+					// close 前のプロセスツリーを取り残さない。
+					terminateProcessForCancellation(
+						process,
+						outputChannel,
+						isPosix ? "SIGKILL" : "SIGTERM",
+					);
+				};
 				// deactivate 時の後始末対象として登録する。close/error で除去する。
 				// 終了ハンドラは isCancelled を立ててから終了させ、拡張停止時の close を
 				// 「キャンセル」扱いにして誤った成功/失敗通知・git.refresh を防ぐ。
 				const shutdownTerminate = (): void => {
-					if (isCancelled || settled) {
+					if (settled) {
+						return;
+					}
+					if (isCancelled) {
+						forceShutdownTerminate();
 						return;
 					}
 					isCancelled = true;
 					terminateProcessForCancellation(process, outputChannel);
 				};
 				activeGitScProcesses.set(process, shutdownTerminate);
+
+				// 子プロセスのプロセスグループがまだ存在するかを signal 0 で確認する。
+				// ESRCH はグループ消滅を意味する。EPERM 等は「存在するが操作不可」なので存続扱いにする。
+				const isPosixProcessGroupAlive = (): boolean => {
+					if (process.pid === undefined) {
+						return false;
+					}
+					try {
+						globalThis.process.kill(-process.pid, 0);
+						return true;
+					} catch (error) {
+						return !(
+							error instanceof Error &&
+							(error as NodeJS.ErrnoException).code === "ESRCH"
+						);
+					}
+				};
+
+				// キャンセル時の close 後、プロセスグループ全体の消滅を確認してから resolve する。
+				//
+				// POSIX の close は「直接の子プロセスと stdio の終了」しか保証せず、stdio を
+				// 継承しない孫プロセスが SIGTERM を無視して生き残るケースがある。ここで即
+				// resolve すると resolveOnce が forceKillTimer をクリアし、5 秒後の SIGKILL
+				// 昇格が走らないまま孫プロセスが孤児として残る。グループ消滅をポーリングで
+				// 確認する間は settled にならないため、SIGKILL 昇格タイマーが生きたまま
+				// 残存プロセスを強制終了できる。SIGKILL でも消えない異常系では上限時間を
+				// 超えた時点で警告を出して resolve し、進捗表示が永久に残るのを防ぐ。
+				const waitForPosixProcessGroupExit = (): void => {
+					if (settled) {
+						return;
+					}
+					if (!isPosixProcessGroupAlive()) {
+						activeGitScProcesses.delete(process);
+						resolveOnce();
+						return;
+					}
+					if (groupExitWaitedMs >= PROCESS_GROUP_EXIT_WAIT_LIMIT_MS) {
+						outputChannel.appendLine(
+							"\n⚠️ git-sc process group is still alive after cancellation; giving up waiting",
+						);
+						activeGitScProcesses.delete(process);
+						resolveOnce();
+						return;
+					}
+					groupExitWaitedMs += PROCESS_GROUP_EXIT_POLL_INTERVAL_MS;
+					groupExitPollTimer = setTimeout(
+						waitForPosixProcessGroupExit,
+						PROCESS_GROUP_EXIT_POLL_INTERVAL_MS,
+					);
+				};
+
+				// キャンセル済みの terminal イベント (close / error) から呼ぶ入口。
+				// close / error ハンドラ冒頭で map から削除済みのため、ポーリング中に
+				// deactivate が来ると残存グループへ何も送れず孫が孤児化する。そこで
+				// 「残存グループを即 SIGKILL する」shutdown ハンドラへ差し替えて map に
+				// 残し (グループ消滅確認後の resolve で削除される)、消滅確認を開始する。
+				// close と error が連続発火してもポーリングを二重に開始しない。
+				let groupExitWaitStarted = false;
+				const beginCancelledPosixGroupExitWait = (): void => {
+					if (groupExitWaitStarted) {
+						return;
+					}
+					groupExitWaitStarted = true;
+					activeGitScProcesses.set(process, () => {
+						// shutdown 時はグレースフル待ちをやめ、残存グループを即時強制終了する
+						if (isPosixProcessGroupAlive()) {
+							forceShutdownTerminate();
+						}
+					});
+					waitForPosixProcessGroupExit();
+				};
 
 				let stdout = "";
 				let stderr = "";
@@ -254,7 +363,14 @@ export async function spawnGitScWithProgress({
 						return;
 					}
 					if (isCancelled) {
-						resolveOnce();
+						if (isPosix) {
+							// 直接の子の close はプロセスグループ全体の消滅と同義ではない。
+							// SIGTERM を無視する孫プロセスが残っている間は resolve せず、
+							// グループ消滅 (または SIGKILL 昇格後の消滅) を確認してから resolve する。
+							beginCancelledPosixGroupExitWait();
+						} else {
+							resolveOnce();
+						}
 						return;
 					}
 
@@ -297,7 +413,15 @@ export async function spawnGitScWithProgress({
 						return;
 					}
 					if (isCancelled) {
-						resolveOnce();
+						if (isPosix) {
+							// キャンセル後の kill 失敗等で error が発火した場合も close と同様に
+							// グループ消滅を確認してから resolve する。即 resolve すると
+							// forceKillTimer がクリアされ SIGKILL 昇格が走らない
+							// (spawn 失敗時は pid 未定義のため即 resolve に合流する)。
+							beginCancelledPosixGroupExitWait();
+						} else {
+							resolveOnce();
+						}
 						return;
 					}
 

@@ -703,6 +703,26 @@ describe("rewordCommit", () => {
 		);
 	});
 
+	it("履歴ロードで非 Error 値が throw されても文字列化してエラー表示する", async () => {
+		// execFileSync のモックが git log・rev-list の両方で非 Error 値を throw するケース。
+		// rewordCommit の catch 内 String(error) 分岐が退行して "[object Object]" 表示に
+		// ならないよう回帰固定する (getCommitCount は全例外を握って null を返すため、
+		// 元の throw 値がそのまま伝搬してくる)。
+		mockExecFileSync.mockImplementation(() => {
+			throw "git log exploded";
+		});
+
+		await rewordCommit(mockOutputChannel as never);
+
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"Failed to load commit history: git log exploded",
+		);
+		expect(mockShowQuickPick).not.toHaveBeenCalled();
+		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
+			"\n❌ Failed to load commit history: git log exploded",
+		);
+	});
+
 	it("should show 0 commit(s) ago for the latest commit in selection", async () => {
 		mockExecFileSync.mockReturnValue(
 			"abc\x00feat: latest\x001h ago\x00Author\x00",
@@ -1280,6 +1300,21 @@ describe("rewordCommit", () => {
 		expect(mockShowQuickPick).not.toHaveBeenCalled();
 	});
 
+	it("getGitWorkspaceRoot が非 Error 値を throw しても文字列化してエラー表示する", async () => {
+		// JS は任意の値を throw できる。`error instanceof Error ? ... : String(error)` の
+		// String(error) 分岐が退行すると "[object Object]" 表示やクラッシュになるため回帰固定する。
+		mockGetGitWorkspaceRoot.mockImplementation(() => {
+			throw "fatal: not an Error instance";
+		});
+
+		await rewordCommit(mockOutputChannel as never);
+
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"Failed to detect Git repository: fatal: not an Error instance",
+		);
+		expect(mockShowQuickPick).not.toHaveBeenCalled();
+	});
+
 	it("should use stdout as reword error message when stderr is empty on failure", async () => {
 		mockExecFileSync.mockReturnValue(
 			"abc1234\x00feat: test\x001h ago\x00Author\x00",
@@ -1651,6 +1686,92 @@ describe("rewordCommit", () => {
 		expect(mockOutputChannel.appendLine).not.toHaveBeenCalledWith(
 			"\n⚠️ Reword cancelled by user",
 		);
+	});
+
+	it("reword キャンセル後の close 時にプロセスグループが残存していれば消滅確認まで resolve を遅延する", async () => {
+		// commit フローと同一の共通ヘルパー (spawnGitScWithProgress) を使う reword フローでも、
+		// POSIX の close 後にグループ残存があれば消滅確認まで resolve しないことを固定する。
+		mockExecFileSync.mockReturnValue(
+			"abc1234\x00feat: test\x001h ago\x00Author\x00",
+		);
+		mockShowQuickPick.mockImplementationOnce((items: unknown[]) =>
+			Promise.resolve(items[0]),
+		);
+		mockShowQuickPick.mockResolvedValueOnce("Yes");
+
+		const originalPlatform = Object.getOwnPropertyDescriptor(
+			globalThis.process,
+			"platform",
+		);
+		Object.defineProperty(globalThis.process, "platform", {
+			value: "linux",
+			configurable: true,
+		});
+		const originalKill = globalThis.process.kill;
+		// SIGKILL が送られるまでグループは存続し、SIGKILL 後の signal 0 で ESRCH を返す
+		let groupAlive = true;
+		const killSpy = vi.fn((_pid: number, signal?: string | number) => {
+			if (signal === 0 && !groupAlive) {
+				const error = new Error("kill ESRCH") as NodeJS.ErrnoException;
+				error.code = "ESRCH";
+				throw error;
+			}
+			if (signal === "SIGKILL") {
+				groupAlive = false;
+			}
+			return true;
+		});
+		globalThis.process.kill = killSpy as typeof globalThis.process.kill;
+		vi.useFakeTimers();
+
+		try {
+			const proc = createMockProcess();
+			Object.defineProperty(proc, "pid", { value: 55555, configurable: true });
+			mockSpawn.mockReturnValue(proc);
+
+			let cancelHandler: (() => void) | undefined;
+			const progress = { report: vi.fn() };
+			const token = {
+				onCancellationRequested: vi.fn((cb: () => void) => {
+					cancelHandler = cb;
+				}),
+				isCancellationRequested: false,
+			};
+			mockWithProgress.mockImplementationOnce(
+				(_options: unknown, callback: (p: unknown, t: unknown) => unknown) =>
+					callback(progress, token),
+			);
+
+			const progressPromise = rewordCommit(mockOutputChannel as never);
+
+			await vi.advanceTimersByTimeAsync(10);
+			cancelHandler?.();
+			expect(killSpy).toHaveBeenCalledWith(-55555, "SIGTERM");
+
+			// 直接の子は close するが、孫プロセスがグループに残存している
+			proc.__emit("close", null);
+			let resolved = false;
+			void progressPromise.then(() => {
+				resolved = true;
+			});
+
+			// グループ残存中は resolve されない
+			await vi.advanceTimersByTimeAsync(1000);
+			expect(resolved).toBe(false);
+
+			// キャンセルから 5 秒経過で SIGKILL 昇格 → グループ消滅 → resolve
+			await vi.advanceTimersByTimeAsync(4000);
+			expect(killSpy).toHaveBeenCalledWith(-55555, "SIGKILL");
+			await vi.advanceTimersByTimeAsync(100);
+			expect(resolved).toBe(true);
+			await progressPromise;
+		} finally {
+			vi.useRealTimers();
+			globalThis.process.kill = originalKill;
+			if (originalPlatform) {
+				Object.defineProperty(globalThis.process, "platform", originalPlatform);
+			}
+		}
 	});
 
 	it("should not call git.refresh on reword failure", async () => {

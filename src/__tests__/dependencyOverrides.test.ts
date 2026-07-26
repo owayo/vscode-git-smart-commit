@@ -18,6 +18,13 @@ describe("dependency security overrides", () => {
 			join(process.cwd(), "pnpm-workspace.yaml"),
 			"utf-8",
 		);
+		// YAML 全文への部分一致 (toContain) だと `# "js-yaml@...": "..."` のような
+		// コメントアウトや `dummy: true # "..."` のようなインラインコメントにも一致して
+		// しまい、無効化された override を検出できずセキュリティ退行を見逃す。
+		// trim した各行と override 文字列の完全一致で照合し、コメント混入を排除する。
+		const activeConfigLines = workspaceConfig
+			.split("\n")
+			.map((line) => line.trim());
 
 		// pnpm audit で検出した transitive dependency の脆弱性を、override で patched version へ固定する。
 		// ここに載せた override が消えると `pnpm audit --audit-level moderate` の clean 状態が崩れる。
@@ -25,17 +32,19 @@ describe("dependency security overrides", () => {
 			'"@isaacs/brace-expansion@<=5.0.0": "5.0.1"',
 			'"ajv@>=7.0.0-alpha.0 <8.18.0": "8.20.0"',
 			'"brace-expansion@<1.1.13": "1.1.13"',
+			'"brace-expansion@>=3.0.0 <5.0.8": "5.0.8"',
 			'"esbuild@>=0.17.0 <0.28.1": "0.28.1"',
-			'"fast-uri@<=3.1.1": "3.1.2"',
+			'"fast-uri@>=3.0.0 <3.1.4": "3.1.4"',
 			'"form-data@>=4.0.0 <4.0.6": "4.0.6"',
-			'"js-yaml@<=4.1.1": "4.2.0"',
+			'"js-yaml@>=4.0.0 <4.3.0": "4.3.0"',
+			'"linkify-it@<=5.0.1": "5.0.2"',
 			'"lodash@<=4.17.23": "4.18.1"',
 			'"markdown-it@<=14.1.1": "14.2.0"',
 			'"minimatch@<3.1.4": "3.1.4"',
 			'"minimatch@>=10.0.0 <10.2.3": "10.2.5"',
 			'"picomatch@<2.3.2": "2.3.2"',
 			'"picomatch@>=4.0.0 <4.0.4": "4.0.4"',
-			'"postcss@<8.5.10": "8.5.14"',
+			'"postcss@<8.5.18": "8.5.18"',
 			'"qs@<=6.14.1": "6.15.2"',
 			'"rollup@>=4.0.0 <4.59.0": "4.60.4"',
 			'"tmp@<0.2.7": "0.2.7"',
@@ -45,7 +54,7 @@ describe("dependency security overrides", () => {
 		];
 
 		for (const override of requiredOverrides) {
-			expect(workspaceConfig).toContain(override);
+			expect(activeConfigLines).toContain(override);
 		}
 	});
 });

@@ -363,6 +363,31 @@ describe("runGitSc", () => {
 		);
 	});
 
+	it("インストール案内の reject 値が Error でなくても文字列化して警告を記録する", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+		mockShowErrorMessage.mockResolvedValue("View Installation");
+		// Thenable は任意の値で reject し得る。catch 内の String(error) 分岐が退行して
+		// "[object Object]" 警告にならないよう回帰固定する。
+		mockOpenExternal.mockRejectedValueOnce("open rejected with string");
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		setTimeout(() => {
+			proc.stderr?.emit("data", Buffer.from("zsh: command not found: git-sc"));
+			proc.__emit("close", 127);
+		}, 10);
+
+		await expect(promise).rejects.toThrow();
+		await new Promise((resolve) => setImmediate(resolve));
+
+		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
+			"\n⚠️ Failed to open installation guide: open rejected with string",
+		);
+	});
+
 	it("should log a warning when openExternal resolves false", async () => {
 		const proc = createMockProcess();
 		mockSpawn.mockReturnValue(proc);
@@ -1059,6 +1084,21 @@ describe("runGitSc", () => {
 		expect(mockSpawn).not.toHaveBeenCalled();
 	});
 
+	it("getGitWorkspaceRoot が非 Error 値を throw しても文字列化してエラー表示する", async () => {
+		// JS は任意の値を throw できる。`error instanceof Error ? ... : String(error)` の
+		// String(error) 分岐が退行すると "[object Object]" 表示やクラッシュになるため回帰固定する。
+		mockGetGitWorkspaceRoot.mockImplementation(() => {
+			throw "fatal: not an Error instance";
+		});
+
+		await runGitSc(mockOutputChannel as never);
+
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"Failed to detect Git repository: fatal: not an Error instance",
+		);
+		expect(mockSpawn).not.toHaveBeenCalled();
+	});
+
 	it("should call outputChannel.show with preserveFocus=true before spawning", async () => {
 		const proc = createMockProcess();
 		mockSpawn.mockReturnValue(proc);
@@ -1353,7 +1393,16 @@ describe("runGitSc", () => {
 			configurable: true,
 		});
 		const originalKill = globalThis.process.kill;
-		const killSpy = vi.fn();
+		// signal 0 (グループ存在確認) には ESRCH を投げ、SIGKILL 後にグループが
+		// 消滅済みであることをシミュレートする (close 時の消滅確認で即 resolve させる)。
+		const killSpy = vi.fn((_pid: number, signal?: string | number) => {
+			if (signal === 0) {
+				const error = new Error("kill ESRCH") as NodeJS.ErrnoException;
+				error.code = "ESRCH";
+				throw error;
+			}
+			return true;
+		});
 		globalThis.process.kill = killSpy as typeof globalThis.process.kill;
 		vi.useFakeTimers();
 
@@ -1401,8 +1450,8 @@ describe("runGitSc", () => {
 	});
 
 	it("should not escalate to SIGKILL when close arrives quickly after cancellation", async () => {
-		// 通常のキャンセルフロー: SIGTERM 後すぐ close が来た場合は SIGKILL を送らない。
-		// forceKillTimer が close 時にクリアされることを保証する。
+		// 通常のキャンセルフロー: SIGTERM 後すぐ close が来てプロセスグループも消滅済みの
+		// 場合は SIGKILL を送らない。forceKillTimer が close 時にクリアされることを保証する。
 		const originalPlatform = Object.getOwnPropertyDescriptor(
 			globalThis.process,
 			"platform",
@@ -1412,7 +1461,16 @@ describe("runGitSc", () => {
 			configurable: true,
 		});
 		const originalKill = globalThis.process.kill;
-		const killSpy = vi.fn();
+		// signal 0 (グループ存在確認) には ESRCH を投げ、SIGTERM でグループ全体が
+		// 素直に終了したことをシミュレートする。
+		const killSpy = vi.fn((_pid: number, signal?: string | number) => {
+			if (signal === 0) {
+				const error = new Error("kill ESRCH") as NodeJS.ErrnoException;
+				error.code = "ESRCH";
+				throw error;
+			}
+			return true;
+		});
 		globalThis.process.kill = killSpy as typeof globalThis.process.kill;
 		vi.useFakeTimers();
 
@@ -1445,6 +1503,459 @@ describe("runGitSc", () => {
 			expect(killSpy).not.toHaveBeenCalledWith(-22222, "SIGKILL");
 
 			await progressPromise;
+		} finally {
+			vi.useRealTimers();
+			globalThis.process.kill = originalKill;
+			if (originalPlatform) {
+				Object.defineProperty(globalThis.process, "platform", originalPlatform);
+			}
+		}
+	});
+
+	it("キャンセル後の close 時にプロセスグループが残存していれば SIGKILL 昇格まで resolve を遅延する", async () => {
+		// POSIX の close は「直接の子と stdio の終了」しか保証せず、stdio を継承しない
+		// 孫プロセスが SIGTERM を無視して生き残るケースがある。close で即 resolve すると
+		// forceKillTimer がクリアされ SIGKILL 昇格が走らず孫が孤児として残るため、
+		// グループ消滅を signal 0 ポーリングで確認してから resolve する回帰テスト。
+		const originalPlatform = Object.getOwnPropertyDescriptor(
+			globalThis.process,
+			"platform",
+		);
+		Object.defineProperty(globalThis.process, "platform", {
+			value: "linux",
+			configurable: true,
+		});
+		const originalKill = globalThis.process.kill;
+		// SIGKILL が送られるまでグループは存続し、SIGKILL 後の signal 0 で ESRCH を返す
+		let groupAlive = true;
+		const killSpy = vi.fn((_pid: number, signal?: string | number) => {
+			if (signal === 0 && !groupAlive) {
+				const error = new Error("kill ESRCH") as NodeJS.ErrnoException;
+				error.code = "ESRCH";
+				throw error;
+			}
+			if (signal === "SIGKILL") {
+				groupAlive = false;
+			}
+			return true;
+		});
+		globalThis.process.kill = killSpy as typeof globalThis.process.kill;
+		vi.useFakeTimers();
+
+		try {
+			const proc = createMockProcess();
+			Object.defineProperty(proc, "pid", { value: 33333, configurable: true });
+			mockSpawn.mockReturnValue(proc);
+
+			let cancelHandler: (() => void) | undefined;
+			const progress = { report: vi.fn() };
+			const token = {
+				onCancellationRequested: vi.fn((cb: () => void) => {
+					cancelHandler = cb;
+				}),
+			};
+			mockWithProgress.mockImplementationOnce((_options, callback) =>
+				callback(progress, token),
+			);
+
+			const progressPromise = runGitSc(mockOutputChannel as never, {
+				autoConfirm: true,
+			});
+
+			await vi.advanceTimersByTimeAsync(10);
+			cancelHandler?.();
+			expect(killSpy).toHaveBeenCalledWith(-33333, "SIGTERM");
+
+			// 直接の子は close するが、孫プロセスがグループに残存している
+			proc.__emit("close", null);
+			let resolved = false;
+			void progressPromise.then(() => {
+				resolved = true;
+			});
+
+			// グループ残存中は resolve されず、SIGKILL もまだ送られない
+			await vi.advanceTimersByTimeAsync(1000);
+			expect(resolved).toBe(false);
+			expect(killSpy).not.toHaveBeenCalledWith(-33333, "SIGKILL");
+
+			// キャンセルから 5 秒経過で SIGKILL 昇格 → グループ消滅 → resolve
+			await vi.advanceTimersByTimeAsync(4000);
+			expect(killSpy).toHaveBeenCalledWith(-33333, "SIGKILL");
+			await vi.advanceTimersByTimeAsync(100);
+			expect(resolved).toBe(true);
+			await progressPromise;
+		} finally {
+			vi.useRealTimers();
+			globalThis.process.kill = originalKill;
+			if (originalPlatform) {
+				Object.defineProperty(globalThis.process, "platform", originalPlatform);
+			}
+		}
+	});
+
+	it("キャンセル後の error 経路でもプロセスグループの消滅確認まで resolve を遅延する", async () => {
+		// キャンセル後に kill 失敗等で error イベントが発火するケース。close と同様に
+		// 即 resolve すると forceKillTimer がクリアされ SIGKILL 昇格が走らないため、
+		// error 経路もグループ消滅の確認へ合流することを固定する。
+		const originalPlatform = Object.getOwnPropertyDescriptor(
+			globalThis.process,
+			"platform",
+		);
+		Object.defineProperty(globalThis.process, "platform", {
+			value: "linux",
+			configurable: true,
+		});
+		const originalKill = globalThis.process.kill;
+		let groupAlive = true;
+		const killSpy = vi.fn((_pid: number, signal?: string | number) => {
+			if (signal === 0 && !groupAlive) {
+				const error = new Error("kill ESRCH") as NodeJS.ErrnoException;
+				error.code = "ESRCH";
+				throw error;
+			}
+			if (signal === "SIGKILL") {
+				groupAlive = false;
+			}
+			return true;
+		});
+		globalThis.process.kill = killSpy as typeof globalThis.process.kill;
+		vi.useFakeTimers();
+
+		try {
+			const proc = createMockProcess();
+			Object.defineProperty(proc, "pid", { value: 66666, configurable: true });
+			mockSpawn.mockReturnValue(proc);
+
+			let cancelHandler: (() => void) | undefined;
+			const progress = { report: vi.fn() };
+			const token = {
+				onCancellationRequested: vi.fn((cb: () => void) => {
+					cancelHandler = cb;
+				}),
+			};
+			mockWithProgress.mockImplementationOnce((_options, callback) =>
+				callback(progress, token),
+			);
+
+			const progressPromise = runGitSc(mockOutputChannel as never, {
+				autoConfirm: true,
+			});
+
+			await vi.advanceTimersByTimeAsync(10);
+			cancelHandler?.();
+
+			// close ではなく error が発火 (グループは残存)
+			proc.__emit("error", new Error("kill EPERM"));
+			let resolved = false;
+			void progressPromise.then(() => {
+				resolved = true;
+			});
+
+			await vi.advanceTimersByTimeAsync(1000);
+			expect(resolved).toBe(false);
+
+			// キャンセルから 5 秒経過で SIGKILL 昇格 → グループ消滅 → resolve
+			await vi.advanceTimersByTimeAsync(4000);
+			expect(killSpy).toHaveBeenCalledWith(-66666, "SIGKILL");
+			await vi.advanceTimersByTimeAsync(100);
+			expect(resolved).toBe(true);
+			await progressPromise;
+		} finally {
+			vi.useRealTimers();
+			globalThis.process.kill = originalKill;
+			if (originalPlatform) {
+				Object.defineProperty(globalThis.process, "platform", originalPlatform);
+			}
+		}
+	});
+
+	it("キャンセル後に error と close が連続しても消滅待ちを二重開始しない", async () => {
+		// ChildProcess は error の後に close も発火し得る。両ハンドラから同じ
+		// ポーリングを開始すると signal 0 の確認と待機時間加算が二重化するため、
+		// terminal event が連続しても開始は 1 回だけに固定する。
+		const originalPlatform = Object.getOwnPropertyDescriptor(
+			globalThis.process,
+			"platform",
+		);
+		Object.defineProperty(globalThis.process, "platform", {
+			value: "linux",
+			configurable: true,
+		});
+		const originalKill = globalThis.process.kill;
+		let groupAlive = true;
+		let existenceChecks = 0;
+		const killSpy = vi.fn((_pid: number, signal?: string | number) => {
+			if (signal === 0) {
+				existenceChecks += 1;
+				if (!groupAlive) {
+					const error = new Error("kill ESRCH") as NodeJS.ErrnoException;
+					error.code = "ESRCH";
+					throw error;
+				}
+			}
+			if (signal === "SIGKILL") {
+				groupAlive = false;
+			}
+			return true;
+		});
+		globalThis.process.kill = killSpy as typeof globalThis.process.kill;
+		vi.useFakeTimers();
+
+		try {
+			const proc = createMockProcess();
+			Object.defineProperty(proc, "pid", { value: 66767, configurable: true });
+			mockSpawn.mockReturnValue(proc);
+
+			let cancelHandler: (() => void) | undefined;
+			const progress = { report: vi.fn() };
+			const token = {
+				onCancellationRequested: vi.fn((cb: () => void) => {
+					cancelHandler = cb;
+				}),
+			};
+			mockWithProgress.mockImplementationOnce((_options, callback) =>
+				callback(progress, token),
+			);
+
+			const progressPromise = runGitSc(mockOutputChannel as never, {
+				autoConfirm: true,
+			});
+
+			await vi.advanceTimersByTimeAsync(10);
+			cancelHandler?.();
+			proc.__emit("error", new Error("kill EPERM"));
+			expect(existenceChecks).toBe(1);
+			proc.__emit("close", null);
+			expect(existenceChecks).toBe(1);
+
+			await vi.advanceTimersByTimeAsync(5000);
+			expect(killSpy).toHaveBeenCalledWith(-66767, "SIGKILL");
+			await vi.advanceTimersByTimeAsync(100);
+			await progressPromise;
+		} finally {
+			vi.useRealTimers();
+			globalThis.process.kill = originalKill;
+			if (originalPlatform) {
+				Object.defineProperty(globalThis.process, "platform", originalPlatform);
+			}
+		}
+	});
+
+	it("プロセスグループ確認が非 Error 値を投げても待機を継続する", async () => {
+		// process.kill は通常 ErrnoException を投げるが、実行環境やテスト差し替えが
+		// 非 Error 値を投げても catch 内の code 参照で再 throw してはならない。
+		// ESRCH と安全に確認できない値はグループ存続扱いにして SIGKILL 昇格を待つ。
+		const originalPlatform = Object.getOwnPropertyDescriptor(
+			globalThis.process,
+			"platform",
+		);
+		Object.defineProperty(globalThis.process, "platform", {
+			value: "linux",
+			configurable: true,
+		});
+		const originalKill = globalThis.process.kill;
+		let groupAlive = true;
+		const killSpy = vi.fn((_pid: number, signal?: string | number) => {
+			if (signal === 0) {
+				if (groupAlive) {
+					throw null;
+				}
+				const error = new Error("kill ESRCH") as NodeJS.ErrnoException;
+				error.code = "ESRCH";
+				throw error;
+			}
+			if (signal === "SIGKILL") {
+				groupAlive = false;
+			}
+			return true;
+		});
+		globalThis.process.kill = killSpy as typeof globalThis.process.kill;
+		vi.useFakeTimers();
+
+		try {
+			const proc = createMockProcess();
+			Object.defineProperty(proc, "pid", { value: 67676, configurable: true });
+			mockSpawn.mockReturnValue(proc);
+
+			let cancelHandler: (() => void) | undefined;
+			const progress = { report: vi.fn() };
+			const token = {
+				onCancellationRequested: vi.fn((cb: () => void) => {
+					cancelHandler = cb;
+				}),
+			};
+			mockWithProgress.mockImplementationOnce((_options, callback) =>
+				callback(progress, token),
+			);
+
+			const progressPromise = runGitSc(mockOutputChannel as never, {
+				autoConfirm: true,
+			});
+
+			await vi.advanceTimersByTimeAsync(10);
+			cancelHandler?.();
+			proc.__emit("close", null);
+
+			let resolved = false;
+			void progressPromise.then(() => {
+				resolved = true;
+			});
+			await vi.advanceTimersByTimeAsync(1000);
+			expect(resolved).toBe(false);
+
+			await vi.advanceTimersByTimeAsync(4000);
+			expect(killSpy).toHaveBeenCalledWith(-67676, "SIGKILL");
+			await vi.advanceTimersByTimeAsync(100);
+			expect(resolved).toBe(true);
+			await progressPromise;
+		} finally {
+			vi.useRealTimers();
+			globalThis.process.kill = originalKill;
+			if (originalPlatform) {
+				Object.defineProperty(globalThis.process, "platform", originalPlatform);
+			}
+		}
+	});
+
+	it("グループ消滅待ちポーリング中に deactivate されたら残存グループへ即 SIGKILL を送る", async () => {
+		// close ハンドラ冒頭で active map から削除済みのままだと、ポーリング中の
+		// reload / deactivate で残存グループへ何も送れず孫プロセスが孤児化する。
+		// ポーリング開始時に「残存グループを即 SIGKILL する」shutdown ハンドラを
+		// map へ再登録することを固定する。
+		const { terminateActiveGitScProcesses } = await import(
+			"../commands/spawnGitScProcess"
+		);
+		const originalPlatform = Object.getOwnPropertyDescriptor(
+			globalThis.process,
+			"platform",
+		);
+		Object.defineProperty(globalThis.process, "platform", {
+			value: "linux",
+			configurable: true,
+		});
+		const originalKill = globalThis.process.kill;
+		let groupAlive = true;
+		const killSpy = vi.fn((_pid: number, signal?: string | number) => {
+			if (signal === 0 && !groupAlive) {
+				const error = new Error("kill ESRCH") as NodeJS.ErrnoException;
+				error.code = "ESRCH";
+				throw error;
+			}
+			if (signal === "SIGKILL") {
+				groupAlive = false;
+			}
+			return true;
+		});
+		globalThis.process.kill = killSpy as typeof globalThis.process.kill;
+		vi.useFakeTimers();
+
+		try {
+			const proc = createMockProcess();
+			Object.defineProperty(proc, "pid", { value: 77777, configurable: true });
+			mockSpawn.mockReturnValue(proc);
+
+			let cancelHandler: (() => void) | undefined;
+			const progress = { report: vi.fn() };
+			const token = {
+				onCancellationRequested: vi.fn((cb: () => void) => {
+					cancelHandler = cb;
+				}),
+			};
+			mockWithProgress.mockImplementationOnce((_options, callback) =>
+				callback(progress, token),
+			);
+
+			const progressPromise = runGitSc(mockOutputChannel as never, {
+				autoConfirm: true,
+			});
+
+			await vi.advanceTimersByTimeAsync(10);
+			cancelHandler?.();
+			proc.__emit("close", null);
+
+			// ポーリング開始直後 (SIGKILL 昇格前) に deactivate 相当が走る
+			await vi.advanceTimersByTimeAsync(200);
+			expect(killSpy).not.toHaveBeenCalledWith(-77777, "SIGKILL");
+			terminateActiveGitScProcesses(mockOutputChannel as never);
+
+			// shutdown ハンドラが残存グループへ即 SIGKILL を送り、次のポーリングで resolve する
+			expect(killSpy).toHaveBeenCalledWith(-77777, "SIGKILL");
+			await vi.advanceTimersByTimeAsync(100);
+			await progressPromise;
+		} finally {
+			vi.useRealTimers();
+			globalThis.process.kill = originalKill;
+			if (originalPlatform) {
+				Object.defineProperty(globalThis.process, "platform", originalPlatform);
+			}
+		}
+	});
+
+	it("SIGKILL 後もプロセスグループが消えない場合は上限時間で警告して resolve する", async () => {
+		// uninterruptible sleep 等で SIGKILL すら効かない異常系。ポーリングを無期限に
+		// 続けると進捗表示が永久に残るため、上限時間超過で警告を出して resolve する。
+		const originalPlatform = Object.getOwnPropertyDescriptor(
+			globalThis.process,
+			"platform",
+		);
+		Object.defineProperty(globalThis.process, "platform", {
+			value: "linux",
+			configurable: true,
+		});
+		const originalKill = globalThis.process.kill;
+		// signal 0 が常に成功 = グループが永遠に残存し続ける
+		const killSpy = vi.fn(() => true);
+		globalThis.process.kill = killSpy as typeof globalThis.process.kill;
+		vi.useFakeTimers();
+
+		try {
+			const proc = createMockProcess();
+			Object.defineProperty(proc, "pid", { value: 44444, configurable: true });
+			mockSpawn.mockReturnValue(proc);
+
+			let cancelHandler: (() => void) | undefined;
+			const progress = { report: vi.fn() };
+			const token = {
+				onCancellationRequested: vi.fn((cb: () => void) => {
+					cancelHandler = cb;
+				}),
+			};
+			mockWithProgress.mockImplementationOnce((_options, callback) =>
+				callback(progress, token),
+			);
+
+			const progressPromise = runGitSc(mockOutputChannel as never, {
+				autoConfirm: true,
+			});
+
+			await vi.advanceTimersByTimeAsync(10);
+			cancelHandler?.();
+			proc.__emit("close", null);
+
+			let resolved = false;
+			void progressPromise.then(() => {
+				resolved = true;
+			});
+
+			// 上限 (10 秒) までは resolve されない
+			await vi.advanceTimersByTimeAsync(9000);
+			expect(resolved).toBe(false);
+
+			// 上限超過で警告を出して resolve する
+			await vi.advanceTimersByTimeAsync(2000);
+			expect(resolved).toBe(true);
+			await progressPromise;
+
+			const calls = mockOutputChannel.appendLine.mock.calls.map(
+				(c: unknown[]) => c[0],
+			) as string[];
+			expect(
+				calls.some((c) =>
+					c.includes(
+						"git-sc process group is still alive after cancellation; giving up waiting",
+					),
+				),
+			).toBe(true);
 		} finally {
 			vi.useRealTimers();
 			globalThis.process.kill = originalKill;
@@ -1627,6 +2138,47 @@ describe("runGitSc", () => {
 		}
 	});
 
+	it("Windows のキャンセル後に error が発火しても失敗通知せず解決する", async () => {
+		const originalPlatform = Object.getOwnPropertyDescriptor(
+			globalThis.process,
+			"platform",
+		);
+		Object.defineProperty(globalThis.process, "platform", {
+			value: "win32",
+			configurable: true,
+		});
+
+		try {
+			const proc = createMockProcess();
+			mockSpawn.mockReturnValue(proc);
+
+			let cancelHandler: (() => void) | undefined;
+			const progress = { report: vi.fn() };
+			const token = {
+				onCancellationRequested: vi.fn((cb: () => void) => {
+					cancelHandler = cb;
+				}),
+			};
+			mockWithProgress.mockImplementationOnce((_options, callback) =>
+				callback(progress, token),
+			);
+
+			const progressPromise = runGitSc(mockOutputChannel as never, {
+				autoConfirm: true,
+			});
+			cancelHandler?.();
+			proc.__emit("error", new Error("terminated during cancellation"));
+			await progressPromise;
+
+			expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
+			expect(mockShowErrorMessage).not.toHaveBeenCalled();
+		} finally {
+			if (originalPlatform) {
+				Object.defineProperty(globalThis.process, "platform", originalPlatform);
+			}
+		}
+	});
+
 	it("should log taskkill spawn errors on win32 cancellation", async () => {
 		const originalPlatform = Object.getOwnPropertyDescriptor(
 			globalThis.process,
@@ -1731,6 +2283,34 @@ describe("runGitSc", () => {
 		).toBe(true);
 	});
 
+	it("git.refresh が非 Error 値で reject しても文字列化して警告を記録する", async () => {
+		const proc = createMockProcess();
+		mockSpawn.mockReturnValue(proc);
+		// Thenable は任意の値で reject し得る。catch 内の String(error) 分岐が退行して
+		// "[object Object]" 警告にならないよう回帰固定する。
+		mockExecuteCommand.mockImplementationOnce(() =>
+			Promise.reject("refresh rejected with string"),
+		);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+		setTimeout(() => proc.__emit("close", 0), 10);
+		await promise;
+
+		// catch は async なので次マイクロタスクで実行される
+		await new Promise((resolve) => setImmediate(resolve));
+
+		const calls = mockOutputChannel.appendLine.mock.calls.map(
+			(c: unknown[]) => c[0],
+		) as string[];
+		expect(
+			calls.some((c) =>
+				c.includes("Git refresh failed: refresh rejected with string"),
+			),
+		).toBe(true);
+	});
+
 	it("terminateActiveGitScProcesses はアクティブなプロセスが無ければ何も出力しない", async () => {
 		// 通常の deactivate (git-sc 実行中でない) で走る経路。プロセス 0 件のときは
 		// "Terminating ... on shutdown" の警告ログを出さず、静かに終了する。
@@ -1767,10 +2347,10 @@ describe("runGitSc", () => {
 		expect(mockExecuteCommand).not.toHaveBeenCalledWith("git.refresh");
 	});
 
-	it("キャンセル後に deactivate が来てもプロセスを二重終了しない", async () => {
+	it("キャンセル後の close 前に deactivate が来たら強制終了へ昇格する", async () => {
 		// ユーザーキャンセル (isCancelled=true、close 未達で active map に残存) の直後に
-		// deactivate 相当の terminateActiveGitScProcesses が走るレース。shutdown ハンドラは
-		// isCancelled を見て早期 return し、terminateProcessForCancellation を再実行しない。
+		// deactivate 相当の terminateActiveGitScProcesses が走るレース。SIGTERM を無視する
+		// プロセスでも拡張ホスト終了後に孤児化しないよう、POSIX では SIGKILL へ昇格する。
 		const { terminateActiveGitScProcesses } = await import(
 			"../commands/spawnGitScProcess"
 		);
@@ -1794,7 +2374,7 @@ describe("runGitSc", () => {
 				const progressPromise = callback(progress, token);
 				// ユーザーキャンセル: isCancelled=true、ただし close 未達なので map に残る
 				cancelHandler?.();
-				// deactivate 相当: すでに isCancelled のため shutdown ハンドラは早期 return する
+				// deactivate 相当: close 前でも即時の強制終了へ昇格する
 				terminateActiveGitScProcesses(mockOutputChannel as never);
 				// close 到達でキャンセル扱いのまま resolve
 				setTimeout(() => proc.__emit("close", null), 10);
@@ -1804,8 +2384,8 @@ describe("runGitSc", () => {
 
 		await runGitSc(mockOutputChannel as never, { autoConfirm: true });
 
-		// kill はキャンセル時の 1 回だけ (deactivate では再送されない)
-		expect(proc.kill).toHaveBeenCalledTimes(1);
+		expect(proc.kill).toHaveBeenNthCalledWith(1, "SIGTERM");
+		expect(proc.kill).toHaveBeenNthCalledWith(2, "SIGKILL");
 	});
 
 	it("resolveSpawnCommand が throw した場合は明示的にエラー通知して reject する", async () => {
@@ -1825,5 +2405,33 @@ describe("runGitSc", () => {
 			expect.stringContaining("Cannot safely launch git-sc"),
 		);
 		expect(mockSpawn).not.toHaveBeenCalled();
+	});
+
+	it("resolveSpawnCommand が非 Error 値を throw しても文字列化して通知し Error で reject する", async () => {
+		// throw された値が Error でない場合、String(error) で文字列化して通知し、
+		// reject には new Error(message) へ包み直して伝搬する分岐の回帰テスト。
+		mockResolveSpawnCommand.mockImplementationOnce(() => {
+			throw "unsafe argument detected";
+		});
+
+		await expect(
+			runGitSc(mockOutputChannel as never, { autoConfirm: true }),
+		).rejects.toThrow("unsafe argument detected");
+
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			expect.stringContaining(
+				"Cannot safely launch git-sc: unsafe argument detected",
+			),
+		);
+		expect(mockSpawn).not.toHaveBeenCalled();
+
+		const calls = mockOutputChannel.appendLine.mock.calls.map(
+			(c: unknown[]) => c[0],
+		) as string[];
+		expect(
+			calls.some((c) =>
+				c.includes("Cannot safely launch git-sc: unsafe argument detected"),
+			),
+		).toBe(true);
 	});
 });
