@@ -2323,7 +2323,7 @@ describe("runGitSc", () => {
 		expect(mockOutputChannel.appendLine).not.toHaveBeenCalled();
 	});
 
-	it("terminateActiveGitScProcesses は実行中プロセスを終了し、その close は成功通知を出さない (deactivate 用)", async () => {
+	it("terminateActiveGitScProcesses は実行中プロセスを即時強制終了し、その close は成功通知を出さない", async () => {
 		const { terminateActiveGitScProcesses } = await import(
 			"../commands/spawnGitScProcess"
 		);
@@ -2336,8 +2336,9 @@ describe("runGitSc", () => {
 		// deactivate 相当: 実行中プロセスを一括終了する
 		terminateActiveGitScProcesses(mockOutputChannel as never);
 		// POSIX (テストホスト) では pid 未定義のためプロセスグループ kill が
-		// child.kill("SIGTERM") にフォールバックする
-		expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
+		// child.kill("SIGKILL") にフォールバックする。拡張ホスト終了後は
+		// 昇格タイマーを実行できないため、通常の deactivate でも即時強制終了する。
+		expect(proc.kill).toHaveBeenCalledWith("SIGKILL");
 
 		// shutdown ハンドラが isCancelled を立てるため、kill 後の close(0) は
 		// キャンセル扱いとなり、誤った成功通知・git.refresh を出さずに resolve する
@@ -2345,6 +2346,57 @@ describe("runGitSc", () => {
 		await promise;
 		expect(mockShowInformationMessage).not.toHaveBeenCalled();
 		expect(mockExecuteCommand).not.toHaveBeenCalledWith("git.refresh");
+	});
+
+	it("通常の deactivate は POSIX プロセスグループへ即 SIGKILL を送る", async () => {
+		const { terminateActiveGitScProcesses } = await import(
+			"../commands/spawnGitScProcess"
+		);
+		const originalPlatform = Object.getOwnPropertyDescriptor(
+			globalThis.process,
+			"platform",
+		);
+		Object.defineProperty(globalThis.process, "platform", {
+			value: "linux",
+			configurable: true,
+		});
+		const originalKill = globalThis.process.kill;
+		const killSpy = vi.fn((_pid: number, signal?: string | number) => {
+			if (signal === 0) {
+				const error = new Error("kill ESRCH") as NodeJS.ErrnoException;
+				error.code = "ESRCH";
+				throw error;
+			}
+			return true;
+		});
+		globalThis.process.kill = killSpy as typeof globalThis.process.kill;
+
+		try {
+			const proc = createMockProcess();
+			Object.defineProperty(proc, "pid", {
+				value: 54321,
+				configurable: true,
+			});
+			mockSpawn.mockReturnValue(proc);
+
+			const promise = runGitSc(mockOutputChannel as never, {
+				autoConfirm: true,
+			});
+
+			terminateActiveGitScProcesses(mockOutputChannel as never);
+
+			// 拡張ホスト終了後は昇格タイマーを実行できないため、
+			// 猶予付きの SIGTERM を挟まずプロセスグループを即時強制終了する。
+			expect(killSpy).toHaveBeenCalledWith(-54321, "SIGKILL");
+
+			proc.__emit("close", 0);
+			await promise;
+		} finally {
+			globalThis.process.kill = originalKill;
+			if (originalPlatform) {
+				Object.defineProperty(globalThis.process, "platform", originalPlatform);
+			}
+		}
 	});
 
 	it("キャンセル後の close 前に deactivate が来たら強制終了へ昇格する", async () => {

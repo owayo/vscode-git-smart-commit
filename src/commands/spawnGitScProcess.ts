@@ -247,18 +247,17 @@ export async function spawnGitScWithProgress({
 					);
 				};
 				// deactivate 時の後始末対象として登録する。close/error で除去する。
-				// 終了ハンドラは isCancelled を立ててから終了させ、拡張停止時の close を
-				// 「キャンセル」扱いにして誤った成功/失敗通知・git.refresh を防ぐ。
+				// 拡張ホスト終了後は SIGKILL 昇格タイマーを実行できないため、shutdown 時は
+				// POSIX のプロセスグループを即時強制終了する。Windows は従来どおり
+				// taskkill /T /F でプロセスツリーを終了する。
+				// isCancelled を立てることで、拡張停止時の close を「キャンセル」扱いにし、
+				// 誤った成功/失敗通知・git.refresh を防ぐ。
 				const shutdownTerminate = (): void => {
 					if (settled) {
 						return;
 					}
-					if (isCancelled) {
-						forceShutdownTerminate();
-						return;
-					}
 					isCancelled = true;
-					terminateProcessForCancellation(process, outputChannel);
+					forceShutdownTerminate();
 				};
 				activeGitScProcesses.set(process, shutdownTerminate);
 
