@@ -13,6 +13,30 @@ describe("dependency security overrides", () => {
 		expect(packageJson.engines?.vscode).toBe(`^${vscodeTypesVersion}`);
 	});
 
+	it("keeps Biome schema aligned with the installed version", () => {
+		const biomePackage = JSON.parse(
+			readFileSync(
+				join(
+					process.cwd(),
+					"node_modules",
+					"@biomejs",
+					"biome",
+					"package.json",
+				),
+				"utf-8",
+			),
+		);
+		const biomeConfig = readFileSync(
+			join(process.cwd(), "biome.jsonc"),
+			"utf-8",
+		);
+		const schemaVersion = biomeConfig.match(
+			/^\s*"\$schema"\s*:\s*"https:\/\/biomejs\.dev\/schemas\/([^/]+)\/schema\.json"/m,
+		)?.[1];
+
+		expect(schemaVersion).toBe(biomePackage.version);
+	});
+
 	it("keeps transitive dependency overrides at patched versions", () => {
 		const workspaceConfig = readFileSync(
 			join(process.cwd(), "pnpm-workspace.yaml"),
