@@ -182,7 +182,7 @@ describe("getRecentCommits", () => {
 		expect(mockExecFileSync).toHaveBeenNthCalledWith(
 			2,
 			GIT_COMMAND,
-			["-C", "/workspace", "rev-list", "--count", "--all"],
+			["-C", "/workspace", "rev-list", "--count", "--max-count=1", "--all"],
 			{ encoding: "utf-8" },
 		);
 	});
@@ -215,7 +215,7 @@ describe("getRecentCommits", () => {
 		expect(mockExecFileSync).toHaveBeenNthCalledWith(
 			2,
 			GIT_COMMAND,
-			["-C", "/workspace", "rev-list", "--count", "--all"],
+			["-C", "/workspace", "rev-list", "--count", "--max-count=1", "--all"],
 			{ encoding: "utf-8" },
 		);
 	});
@@ -419,12 +419,12 @@ describe("getRecentCommits", () => {
 		);
 	});
 
-	it("should rethrow git log error when getCommitCount returns non-numeric output", () => {
+	it("should rethrow git log error when the history probe returns non-numeric output", () => {
 		mockExecFileSync
 			.mockImplementationOnce(() => {
 				throw new Error("fatal: bad object HEAD");
 			})
-			// rev-list が非数値を返す場合（getCommitCount が null を返す）
+			// rev-list が非数値を返す場合は判定不能として扱う
 			.mockReturnValueOnce("not-a-number\n");
 
 		expect(() => getRecentCommits("/workspace")).toThrow(
@@ -432,18 +432,33 @@ describe("getRecentCommits", () => {
 		);
 	});
 
-	it("should rethrow git log error when repository has commits (getCommitCount > 0)", () => {
+	it("should rethrow git log error when repository has reachable commits", () => {
 		mockExecFileSync
 			.mockImplementationOnce(() => {
 				throw new Error("fatal: bad default revision 'HEAD'");
 			})
-			// rev-list がコミット数 > 0 を返す場合
-			.mockReturnValueOnce("5\n");
+			// rev-list が最初のコミットを検出した場合
+			.mockReturnValueOnce("1\n");
 
 		expect(() => getRecentCommits("/workspace")).toThrow(
 			"fatal: bad default revision 'HEAD'",
 		);
 	});
+
+	it.each(["1\n", "not-a-number\n", "", "0invalid\n", "-1\n"])(
+		"履歴の存在確認が %j を返したら元のエラーを保持する",
+		(probeOutput) => {
+			const logError = new Error("fatal: bad object HEAD");
+			mockExecFileSync
+				.mockImplementationOnce(() => {
+					throw logError;
+				})
+				.mockReturnValueOnce(probeOutput);
+
+			expect(() => getRecentCommits("/workspace")).toThrow(logError);
+			expect(mockResolveNativeExecutableOnPath).toHaveBeenCalledTimes(1);
+		},
+	);
 
 	it("should strip newline separators from all hashes in 3+ commit output", () => {
 		// 実際の git log --format=format: 出力を再現: コミット間に \n が挿入される

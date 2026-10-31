@@ -57,7 +57,7 @@
 
 ## 動作要件
 
-VS Code `1.125.0` 以上が必要です。
+VS Code `1.140.0` 以上が必要です。
 
 [git-sc](https://github.com/owayo/git-smart-commit) CLI をインストールし、PATH に追加してください：
 
@@ -143,9 +143,11 @@ SCM タイトルバーの ✨ (スパークル) アイコンをクリックし�
 
 コマンド実行時に引数を明示した場合は、その値がワークスペース設定より優先されます。
 
-複数ルートワークスペースでは、開いているフォルダーを順に確認し、最初に見つかった Git リポジトリのルートで `git-sc` と履歴読み込みを実行します。
+複数ルートワークスペースでは、開いているフォルダーを順に確認し、削除済み・通常ファイルになった候補を除外して、最初に見つかった Git リポジトリのルートで `git-sc` と履歴読み込みを実行します。
 
 ## 開発
+
+Node.js 24.21.0 と pnpm 11.5.2 を `mise.toml` で固定しています。mise を使う場合は `mise install` 後、以下のコマンドに `mise exec --` を付けて実行してください。
 
 ```bash
 # リポジトリをクローン
@@ -174,13 +176,17 @@ pnpm run test
 pnpm audit --audit-level moderate
 ```
 
-dev 依存の推移依存には `pnpm-workspace.yaml` の `overrides` と lockfile 更新でパッチ済みバージョンを明示し、`pnpm audit --audit-level moderate` が通る状態を維持します。現在は `@isaacs/brace-expansion`、`ajv`、`brace-expansion`、`esbuild`、`fast-uri`、`form-data`、`js-yaml`、`linkify-it`、`lodash`、`markdown-it`、`minimatch`、`nanoid`、`picomatch`、`postcss`、`qs`、`rollup`、`tmp`、`underscore`、`undici`、`vite` をpatched versionへ固定しています。直近の監査対応では、`brace-expansion` をDoS修正版の `5.0.9`、`fast-uri` をhost confusion修正版の `3.1.5`、`js-yaml` をquadratic CPU consumption修正版の `4.3.1`、`nanoid` を無限ループ修正版の `3.3.17`、`postcss` をsource map経由の任意ファイル読み取り修正版の `8.5.23`、`undici` を複数の情報漏えい・解析停止・injection修正版の `7.29.0` へ更新しています。これらのoverrideは `dependencyOverrides.test.ts` で退行固定し、削除・バージョン後退で監査clean状態が崩れないようにしています。pnpm 11のinstall script承認は `allowBuilds` で `@vscode/vsce-sign`、`esbuild`、`keytar` を明示し、`pnpm install --frozen-lockfile` が非対話環境でも完了するようにします。Biomeを更新するときは `pnpm exec biome migrate --write` も実行し、インストール済みBiomeの実バージョンと `biome.jsonc` のschema URLが一致することを回帰テストで保証します。VS Code API型定義を更新するときは `engines.vscode` も同じ最小バージョンへ揃え、`vsce package --no-dependencies` の整合チェックを通る状態を保ちます。
+開発依存の脆弱性は `pnpm-workspace.yaml` の `overrides` と lockfile で修正版へ固定します。Vitest 5.0.5、vsce 4.0.0 への更新後も、`pnpm audit --audit-level moderate` で脆弱性0件を確認しています。`@azure/identity` 4.14.1、`minimatch` 11.0.1、`brace-expansion` 5.0.12、`nanoid` 3.3.18、`qs` 6.16.1、`source-map-js` 1.2.2、Vite 7.3.7 などの指定は `dependencyOverrides.test.ts` で検証します。vsce の minimatch 利用箇所は維持される公開 API のみであり、VSIX 作成も検証しています。
+
+pnpm の install script は `allowBuilds` で承認します。Biome 更新時は `pnpm exec biome migrate --write` を実行し、schema と実バージョンを揃えます。`@types/vscode` 更新時は `engines.vscode` も同じ最小バージョンへ揃えます。
+
+履歴の取得に失敗した場合、空リポジトリかどうかを `rev-list --count --max-count=1 --all` で調べます。全履歴を数えず、orphan HEAD に他の ref の履歴がある場合は元のエラーを保持します。計測条件・生データ・再実行方法は[定期点検の記録](docs/maintenance/2026-10-31.md)を参照してください。
 
 ユニットテストには、`extension.ts` で登録される各コマンドハンドラのオプション引き渡し、内部コマンド失敗時の例外抑止、キャンセル時の POSIX `SIGTERM` と Windows `taskkill` 分岐、`taskkill` 失敗時の `SIGTERM` フォールバック、`PATH` の空要素・相対要素・同名ディレクトリを除外する実行ファイル解決、POSIX で `PATH` 環境変数自体が未定義のときに null を返す安全側の境界、Windows の `Path` / 小文字 `path` 環境変数フォールバック、安全な native `git` 解決、直接指定された `.CMD` を native 実行ファイルとして返さない境界値、拡張子付きコマンド名へ `PATHEXT` を連結しない回帰ケース、パス区切りを含む壊れた `PATHEXT` 要素を探索候補から除外し、有効要素が無い場合はデフォルト拡張子へフォールバックする回帰ケース、`.cmd` / `.bat` 起動時に cmd.exe メタ文字を含む引数を個別 quote する回帰ケース、引数内のダブルクォート (`a"b`) と直前にバックスラッシュが付くバリエーション (`a\"b`) はいずれも cmd.exe の string トグルにより安全に escape できないため `escapeCmdArgument` で拒否する回帰ケース、末尾バックスラッシュを閉じ引用符の前で倍にして CommandLineToArgvW 互換に保つ回帰ケース、`taskkill` の絶対パス解決と `WINDIR` / 小文字 `systemroot` / 小文字 `windir` フォールバック、System32 配下の同名ディレクトリ拒否、Git ルートパス末尾の空白保持、Windows の drive-relative な PATH 要素・SystemRoot の除外と UNC パス要素の受け入れ、cmd.exe の `%VAR%` 展開を防ぐ `%` を含む引数・実行ファイルパスの拒否、`deactivate` 時に実行中の `git-sc` を終了させる回帰ケース、導入手順リンクのオープン失敗時 (Promise の reject および VS Code が返す `false` 解決) に警告ログへ落とし、`true` 解決時には警告を出さない回帰ケース、security override 全体が削除・退行しないことを確認する `pnpm-workspace.yaml` 退行ケース、`@types/vscode` と `engines.vscode` の最小バージョンがずれないことを確認する package metadata 退行ケース、インストール済み Biome の実バージョンと `biome.jsonc` の schema URL がずれないことを確認する設定退行ケース、`isCommandNotFoundError` が `my-git-sc` / `git-sc-helper` のような別コマンド名を git-sc 自身の未検出と取り違えないハイフン境界の回帰ケース、cmd.exe 経由起動で delayed expansion 対象の `!` を含む引数・実行ファイルパスを reject する回帰ケースと `/v:off` 付与の検証、`git rev-parse --show-toplevel` 出力に行終端が無い場合に Git ルートをそのまま返す防御分岐の回帰ケース、UTF-8 の複数バイト文字が stdout/stderr のチャンク境界で分割されても文字化けしない回帰ケース、キャンセル後の `close` 時にプロセスグループが残存していれば消滅確認 (SIGKILL 昇格含む) まで resolve を遅延し、SIGKILL でも消えない場合は上限時間で警告して resolve する回帰ケース、コメントアウトされた security override に照合が誤マッチしない有効行限定の退行ケース、非 Error 値が throw / reject された場合も `[object Object]` にせず文字列化して通知・記録する防御分岐の回帰ケース、失敗ログに関する回帰ケースも含まれます。
 
 今回さらに、activate 前の新規モジュールで `deactivate()` を呼んでもプロセス終了処理を誤実行しないこと、Windows で `PATH` / `Path` / `path` がすべて未定義ならファイル探索を行わず `null` を返すこと、実行中の `git-sc` が無い shutdown では警告ログを出さないことを境界テストとして固定しています。
 
-キャンセル状態機械については、通常の deactivate で POSIX プロセスグループへ即 SIGKILL を送ること、ユーザーキャンセル後かつ `close` / `error` 前の deactivate でも POSIX を SIGKILL へ昇格すること、プロセスグループ確認が非 `Error` 値を投げても待機を継続すること、`error` と `close` の連続発火で消滅待ちを二重開始しないこと、Windows のキャンセル後に `error` が発火しても失敗通知せず解決することを回帰テストで固定しています。全 311 テストに加え、v8 coverage は Statements 99.14% / Functions 100% を確認しています。
+キャンセルの状態機械には、通常の deactivate とキャンセル直後の deactivate の両方で、POSIX プロセスグループへ即 SIGKILL を送る回帰テストがあります。`error` と `close` がどちらの順序で連続しても、消滅待ちを二重に開始せず、拡張停止時の強制終了を維持します。非 `Error` 値による例外と、Windows のキャンセル後のエラーも検証しています。全326テストが成功し、v8 coverage は Statements 99.13% / Functions 100% でした。
 
 ### デバッグ
 

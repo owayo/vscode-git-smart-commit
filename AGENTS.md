@@ -43,6 +43,7 @@ pnpm exec vsce package --no-dependencies
 src/
   extension.ts              # 拡張機能エントリポイント (activate/deactivate)
   commands/
+    gitExecutable.ts        # Git の安全な絶対パス解決と未検出時のエラーを統一
     getGitWorkspaceRoot.ts  # 開いている workspace folders から最初の Git repository root を解決
     runGitSc.ts             # commit フローのオプション組み立て + 共通 spawn ヘルパー呼び出し
     rewordCommit.ts         # Commit reword UI + git log parsing + 共通 spawn ヘルパー呼び出し
@@ -51,6 +52,7 @@ src/
     terminateProcessForCancellation.ts # POSIX / Windows の安全なキャンセル補助
     resolveExecutablePath.ts # PATH 走査による実行ファイル絶対パス解決 (cwd ハイジャック対策)
   __tests__/
+    gitHistory.integration.test.ts # 実際の Git による空履歴・orphan HEAD・複数ルート検証
     dependencyOverrides.test.ts # pnpm override と package metadata の退行テスト
     extension.test.ts       # 拡張機能 activation のテスト
     getGitWorkspaceRoot.test.ts # Git workspace root 解決テスト
@@ -82,6 +84,8 @@ src/
 - インストール案内ダイアログの "View Installation" から `vscode.env.openExternal(...)` を呼ぶ経路も `Promise.resolve(...).catch(...)` で囲み、URL オープン失敗時は未処理 rejection にせず `OutputChannel` に警告を記録する。
 
 ## Recent Maintenance Notes
+
+- **Maintenance (2026-10-31)**: Git の絶対パス解決を `gitExecutable.ts` に集約し、未検出時の通知と最新 PATH の扱いを統一。履歴の存在確認は `hasReachableCommit` の三値判定と `rev-list --count --max-count=1 --all` に変更し、元の log エラーを保持したまま全件走査を除去した。削除済み・ファイル化した workspace 候補はスキップし、URI scheme は限定しない。キャンセル後の error/close 連続発火で shutdown 登録が消える不具合は、重複ポーリングのガードより先に登録を復元して修正。実 Git の結合テストを含む326テスト、型チェック、Lint、VSIX作成、監査0件を確認。5万コミットの判定は15回の中央値で9,085.32msから75.19msへ短縮し、CPU・RSSも減少。詳細と生データは `docs/maintenance/2026-10-31.md` を参照。Node 24.21.0 / pnpm 11.5.2 は `mise.toml` に固定し、`mise install` 後は `mise exec --` で実行する。Vitest / coverage-v8 は5.0.5、vsceは4.0.0、Biomeは2.5.15、VS Code API型とengineは1.140.0へ更新し、security overrideも更新した。
 
 - **Maintenance (Biome patch更新とsecurity override更新)**: `depup --install --include-pinned` で `@biomejs/biome` の宣言範囲を ^2.5.4 から ^2.5.5 へ更新した（lockfileの解決版と `biome.jsonc` のschemaは引き続き2.5.6）。最新の `pnpm audit --audit-level moderate` で修正版が要求された `brace-expansion` 5.0.9、`fast-uri` 3.1.5、`js-yaml` 4.3.1、`nanoid` 3.3.17、`postcss` 8.5.23、`undici` 7.29.0 を `pnpm-workspace.yaml` のoverrideへ反映し、`dependencyOverrides.test.ts` の有効行完全一致による退行テストも同時に更新した。監査は `No known vulnerabilities found` へ回復し、Lint / Format / TypeScript compile / 311テスト / VSIX packageはすべて成功。v8 coverageはStatements 99.14% / Functions 100%。全体レビューでは確実な追加バグや必要なリファクタリングは見つからず、`astro-sight review --dir . --git` も未解決影響 / API変更 / dead symbolなし。
 - **Maintenance (Biome 更新と schema 整合テスト)**: `depup --install --include-pinned` で `@biomejs/biome` の宣言範囲を ^2.5.3 から ^2.5.4 へ更新し、lockfile では 2.5.6 を解決した。`biome migrate --write` で `biome.jsonc` の `$schema` も 2.5.6 へ揃え、今後の依存更新時に migrate 漏れを検出できるよう、インストール済み Biome package の実バージョンと有効な schema URL のバージョンが完全一致する回帰テストを `dependencyOverrides.test.ts` に追加した。`pnpm audit --audit-level moderate` は clean、Lint / Format / TypeScript compile / 311 テスト / VSIX package はすべて成功。全体レビューでは確実な追加バグや必要なリファクタリングは見つからず、`astro-sight review --dir . --git` も unresolved impact / missing cochange / API diff / dead symbols なし。
@@ -279,7 +283,7 @@ src/
 ## VS Code Extension Details
 
 - **Activation**: `workspaceContains:.git`
-- **Engine**: `vscode ^1.125.0`
+- **Engine**: `vscode ^1.140.0`
 - **Publisher**: owayo
 - **Commands**: 5 commands (4 commit variants + reword)
 - **Keybindings**: `Cmd+Shift+G C` (commit), `Cmd+Shift+G R` (reword)

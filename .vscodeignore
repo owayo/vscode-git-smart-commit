@@ -21,3 +21,7 @@ build-counter.txt
 *.vsix
 CLAUDE.md
 AGENTS.md
+
+mise.toml
+scripts/**
+docs/maintenance/**

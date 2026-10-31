@@ -1,6 +1,7 @@
+import { statSync } from "node:fs";
 import { execFileSync } from "child_process";
 import type * as vscode from "vscode";
-import { resolveNativeExecutableOnPath } from "./resolveExecutablePath";
+import { resolveGitExecutable } from "./gitExecutable";
 
 /** git rev-parse が「Git 管理外」として返すエラーかどうかを判定する */
 function isNotGitRepositoryError(error: unknown): boolean {
@@ -14,14 +15,6 @@ function getGitEnglishEnv() {
 		LC_ALL: "C",
 		LANG: "C",
 	};
-}
-
-function resolveGitExecutable(): string {
-	const gitCommand = resolveNativeExecutableOnPath("git");
-	if (!gitCommand) {
-		throw new Error("spawn git ENOENT");
-	}
-	return gitCommand;
 }
 
 /**
@@ -50,6 +43,13 @@ export function getGitWorkspaceRoot(
 	let gitCommand: string | undefined;
 
 	for (const folder of workspaceFolders) {
+		// 削除済み・ファイル化した候補を除外し、後続の正常なリポジトリを検出する。
+		// URI の scheme は限定せず、リモート拡張ホストで参照できる fsPath も扱う。
+		if (
+			!statSync(folder.uri.fsPath, { throwIfNoEntry: false })?.isDirectory()
+		) {
+			continue;
+		}
 		try {
 			gitCommand ??= resolveGitExecutable();
 			// git 実行ファイルは絶対パスで起動し、対象リポジトリは `-C <dir>` で渡す。

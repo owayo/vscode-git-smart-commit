@@ -1,7 +1,7 @@
 import { execFileSync } from "child_process";
 import * as vscode from "vscode";
 import { getGitWorkspaceRoot } from "./getGitWorkspaceRoot";
-import { resolveNativeExecutableOnPath } from "./resolveExecutablePath";
+import { resolveGitExecutable } from "./gitExecutable";
 import { spawnGitScWithProgress } from "./spawnGitScProcess";
 
 export interface CommitInfo {
@@ -14,28 +14,19 @@ export interface CommitInfo {
 
 const GIT_LOG_SEPARATOR = "\x00";
 
-function resolveGitExecutable(): string {
-	const gitCommand = resolveNativeExecutableOnPath("git");
-	if (!gitCommand) {
-		throw new Error("spawn git ENOENT");
-	}
-	return gitCommand;
-}
-
-function getCommitCount(workspaceRoot: string): number | null {
+/** 到達可能なコミットの有無だけを調べ、判定不能なら元の履歴取得エラーを保持する。 */
+function hasReachableCommit(
+	gitCommand: string,
+	workspaceRoot: string,
+): boolean | null {
 	try {
-		const gitCommand = resolveGitExecutable();
-		// git 実行ファイルは絶対パスで起動し、対象リポジトリは `-C <dir>` で渡す。
-		// bare command と cwd 指定を組み合わせないことで、偽 `git.exe` の探索余地を断つ。
+		// 空かどうかの確認に全履歴を数えない。orphan HEAD でも他の ref は確認する。
 		const output = execFileSync(
 			gitCommand,
-			["-C", workspaceRoot, "rev-list", "--count", "--all"],
-			{
-				encoding: "utf-8",
-			},
+			["-C", workspaceRoot, "rev-list", "--count", "--max-count=1", "--all"],
+			{ encoding: "utf-8" },
 		).trim();
-		const count = Number.parseInt(output, 10);
-		return Number.isNaN(count) ? null : count;
+		return output === "0" ? false : output === "1" ? true : null;
 	} catch {
 		return null;
 	}
@@ -66,7 +57,7 @@ export function getRecentCommits(
 			},
 		);
 	} catch (error) {
-		if (getCommitCount(workspaceRoot) === 0) {
+		if (hasReachableCommit(gitCommand, workspaceRoot) === false) {
 			return [];
 		}
 		throw error;

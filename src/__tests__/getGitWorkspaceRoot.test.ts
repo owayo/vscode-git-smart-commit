@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import { execFileSync } from "child_process";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getGitWorkspaceRoot } from "../commands/getGitWorkspaceRoot";
@@ -14,11 +15,15 @@ vi.mock("../commands/resolveExecutablePath", () => ({
 		mockResolveNativeExecutableOnPath(...args),
 }));
 
+vi.mock("node:fs", () => ({ statSync: vi.fn() }));
+
+const mockStatSync = vi.mocked(statSync);
 const mockExecFileSync = vi.mocked(execFileSync);
 
 describe("getGitWorkspaceRoot", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mockStatSync.mockReturnValue({ isDirectory: () => true } as never);
 		mockResolveNativeExecutableOnPath.mockReturnValue(GIT_COMMAND);
 	});
 
@@ -56,6 +61,38 @@ describe("getGitWorkspaceRoot", () => {
 				env: expect.objectContaining({ LC_ALL: "C", LANG: "C" }),
 			}),
 		);
+	});
+
+	it.each([undefined, { isDirectory: () => false }])(
+		"削除済みまたはファイルになったフォルダー %j を飛ばして次のリポジトリを使う",
+		(stats) => {
+			mockStatSync.mockReturnValueOnce(stats as never);
+			mockExecFileSync.mockReturnValueOnce("/workspace/repo\n");
+
+			expect(
+				getGitWorkspaceRoot([
+					{ uri: { fsPath: "/workspace/missing" } },
+					{ uri: { fsPath: "/workspace/repo" } },
+				] as never),
+			).toBe("/workspace/repo");
+			expect(mockExecFileSync).toHaveBeenCalledTimes(1);
+			expect(mockExecFileSync).toHaveBeenCalledWith(
+				GIT_COMMAND,
+				["-C", "/workspace/repo", "rev-parse", "--show-toplevel"],
+				expect.any(Object),
+			);
+		},
+	);
+
+	it("ファイルシステムの権限エラーは握りつぶさず伝える", () => {
+		const error = new Error("EACCES: permission denied");
+		mockStatSync.mockImplementationOnce(() => {
+			throw error;
+		});
+		expect(() =>
+			getGitWorkspaceRoot([{ uri: { fsPath: "/workspace/repo" } }] as never),
+		).toThrow(error);
+		expect(mockExecFileSync).not.toHaveBeenCalled();
 	});
 
 	it("should return the Git root for a single workspace folder", () => {
