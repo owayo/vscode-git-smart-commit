@@ -319,16 +319,18 @@ export async function spawnGitScWithProgress({
 				// close と error が連続発火してもポーリングを二重に開始しない。
 				let groupExitWaitStarted = false;
 				const beginCancelledPosixGroupExitWait = (): void => {
-					if (groupExitWaitStarted) {
-						return;
-					}
-					groupExitWaitStarted = true;
+					// 後続の close/error も map から削除するため、待機開始済みでも
+					// shutdown ハンドラを復元する。ポーリングの重複だけを下で抑止する。
 					activeGitScProcesses.set(process, () => {
 						// shutdown 時はグレースフル待ちをやめ、残存グループを即時強制終了する
 						if (isPosixProcessGroupAlive()) {
 							forceShutdownTerminate();
 						}
 					});
+					if (groupExitWaitStarted) {
+						return;
+					}
+					groupExitWaitStarted = true;
 					waitForPosixProcessGroupExit();
 				};
 
