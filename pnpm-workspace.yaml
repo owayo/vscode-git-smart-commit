@@ -2,22 +2,22 @@ packages:
   - "."
 
 allowBuilds:
-  '@vscode/vsce-sign': true
+  "@vscode/vsce-sign": true
   esbuild: true
   keytar: true
 
 minimumReleaseAgeExclude:
-  - '@biomejs/biome@2.6.7'
-  - '@biomejs/cli-android-arm64@2.6.7'
-  - '@biomejs/cli-android-x64@2.6.7'
-  - '@biomejs/cli-darwin-arm64@2.6.7'
-  - '@biomejs/cli-darwin-x64@2.6.7'
-  - '@biomejs/cli-linux-arm64-musl@2.6.7'
-  - '@biomejs/cli-linux-arm64@2.6.7'
-  - '@biomejs/cli-linux-x64-musl@2.6.7'
-  - '@biomejs/cli-linux-x64@2.6.7'
-  - '@biomejs/cli-win32-arm64@2.6.7'
-  - '@biomejs/cli-win32-x64@2.6.7'
+  - "@biomejs/biome@2.6.7"
+  - "@biomejs/cli-android-arm64@2.6.7"
+  - "@biomejs/cli-android-x64@2.6.7"
+  - "@biomejs/cli-darwin-arm64@2.6.7"
+  - "@biomejs/cli-darwin-x64@2.6.7"
+  - "@biomejs/cli-linux-arm64-musl@2.6.7"
+  - "@biomejs/cli-linux-arm64@2.6.7"
+  - "@biomejs/cli-linux-x64-musl@2.6.7"
+  - "@biomejs/cli-linux-x64@2.6.7"
+  - "@biomejs/cli-win32-arm64@2.6.7"
+  - "@biomejs/cli-win32-x64@2.6.7"
 
 overrides:
   "@azure/identity@>=4.0.0 <4.14.1": "4.14.1"
