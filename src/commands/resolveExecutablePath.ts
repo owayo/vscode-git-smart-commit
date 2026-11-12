@@ -327,7 +327,7 @@ function buildCmdCommandLine(executable: string, args: string[]): string {
 export interface SpawnCommandResolution {
 	/** spawn に渡す実行ファイル (常に絶対パス) */
 	command: string;
-	/** spawn に渡す引数。`.cmd`/`.bat` 経由起動時は `["/d", "/s", "/c", "..."]` 形式 */
+	/** spawn に渡す引数。`.cmd`/`.bat` 起動時は `["/d", "/s", "/v:off", "/c", "..."]` 形式 */
 	args: string[];
 	/**
 	 * `child_process.spawn` の `windowsVerbatimArguments` 指定。

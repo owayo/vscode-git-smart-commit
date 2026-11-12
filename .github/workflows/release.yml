@@ -43,7 +43,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "24"
+          node-version: "26.13.1"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -62,7 +62,7 @@ jobs:
             OLD_YEAR=$(echo "${CURRENT}" | cut -d. -f1)
             OLD_MONTH=$(echo "${CURRENT}" | cut -d. -f2)
             OLD_COUNTER=$(echo "${CURRENT}" | cut -d. -f3)
-            OLD_YEAR_2DIGIT=$(echo "${OLD_YEAR}" | sed 's/^20//')
+            OLD_YEAR_2DIGIT="${OLD_YEAR#20}"
             if [ "${OLD_YEAR_2DIGIT}" = "${YEAR}" ] && [ "${OLD_MONTH}" = "${MONTH}" ]; then
               NEW_COUNTER=$((OLD_COUNTER + 1))
             else
@@ -78,8 +78,15 @@ jobs:
           # package.json を更新する
           sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${NEW_VERSION}\"/" package.json
 
-          echo "version=${NEW_VERSION}" >> $GITHUB_OUTPUT
-          echo "tag=v${NEW_VERSION}" >> $GITHUB_OUTPUT
+          echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+
+      # ビルドとパッケージ作成が成功してからリリースタグを公開する。
+      - name: Build extension
+        run: pnpm run compile
+
+      - name: Package extension
+        run: pnpm exec vsce package --no-dependencies
 
       - name: Commit and tag
         if: ${{ !inputs.dry_run }}
@@ -95,15 +102,15 @@ jobs:
           echo "🧪 Dry run mode - skipping commit and publish"
           echo "Would release: ${{ steps.bump.outputs.tag }}"
 
-      - name: Build extension
-        run: pnpm run compile
-
-      - name: Package extension
-        run: pnpm exec vsce package --no-dependencies
-
       - name: Get VSIX filename
         id: vsix
-        run: echo "filename=$(ls *.vsix)" >> $GITHUB_OUTPUT
+        run: |
+          VSIX_FILES=(./*.vsix)
+          if [ "${#VSIX_FILES[@]}" -ne 1 ] || [ ! -f "${VSIX_FILES[0]}" ]; then
+            echo "Expected exactly one VSIX package" >&2
+            exit 1
+          fi
+          echo "filename=${VSIX_FILES[0]#./}" >> "$GITHUB_OUTPUT"
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v6
@@ -129,7 +136,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "24"
+          node-version: "26.13.1"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -160,7 +167,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "24"
+          node-version: "26.13.1"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -196,6 +203,8 @@ jobs:
 
       - name: Release summary
         run: |
-          echo "## Release v${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- VS Marketplace: ${{ needs.publish-vscode.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Open VSX: ${{ needs.publish-openvsx.result }}" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Release v${{ needs.prepare.outputs.version }}"
+            echo "- VS Marketplace: ${{ needs.publish-vscode.result }}"
+            echo "- Open VSX: ${{ needs.publish-openvsx.result }}"
+          } >> "$GITHUB_STEP_SUMMARY"

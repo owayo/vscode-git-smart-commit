@@ -13,9 +13,13 @@ export function activate(context: vscode.ExtensionContext): void {
 	// ステージ全件 + 自動確定 (-a -y)
 	const runAddAutoConfirmCommand = vscode.commands.registerCommand(
 		"git-smart-commit.runAddAutoConfirm",
-		async () => {
+		async (sourceControl?: vscode.SourceControl) => {
 			try {
-				await runGitSc(outputChannel, { stageAll: true, autoConfirm: true });
+				await runGitSc(
+					outputChannel,
+					{ stageAll: true, autoConfirm: true },
+					sourceControl?.rootUri,
+				);
 			} catch {
 				// runGitSc 側でエラー表示済み
 			}
@@ -25,13 +29,17 @@ export function activate(context: vscode.ExtensionContext): void {
 	// ステージ全件 + 本文付き + 自動確定 (-a -b -y)
 	const runAddBodyAutoConfirmCommand = vscode.commands.registerCommand(
 		"git-smart-commit.runAddBodyAutoConfirm",
-		async () => {
+		async (sourceControl?: vscode.SourceControl) => {
 			try {
-				await runGitSc(outputChannel, {
-					stageAll: true,
-					includeBody: true,
-					autoConfirm: true,
-				});
+				await runGitSc(
+					outputChannel,
+					{
+						stageAll: true,
+						includeBody: true,
+						autoConfirm: true,
+					},
+					sourceControl?.rootUri,
+				);
 			} catch {
 				// runGitSc 側でエラー表示済み
 			}
@@ -41,9 +49,13 @@ export function activate(context: vscode.ExtensionContext): void {
 	// 自動確定のみ (-y)
 	const runAutoConfirmCommand = vscode.commands.registerCommand(
 		"git-smart-commit.runAutoConfirm",
-		async () => {
+		async (sourceControl?: vscode.SourceControl) => {
 			try {
-				await runGitSc(outputChannel, { autoConfirm: true });
+				await runGitSc(
+					outputChannel,
+					{ autoConfirm: true },
+					sourceControl?.rootUri,
+				);
 			} catch {
 				// runGitSc 側でエラー表示済み
 			}
@@ -53,9 +65,13 @@ export function activate(context: vscode.ExtensionContext): void {
 	// 本文付き + 自動確定 (-b -y)
 	const runBodyAutoConfirmCommand = vscode.commands.registerCommand(
 		"git-smart-commit.runBodyAutoConfirm",
-		async () => {
+		async (sourceControl?: vscode.SourceControl) => {
 			try {
-				await runGitSc(outputChannel, { includeBody: true, autoConfirm: true });
+				await runGitSc(
+					outputChannel,
+					{ includeBody: true, autoConfirm: true },
+					sourceControl?.rootUri,
+				);
 			} catch {
 				// runGitSc 側でエラー表示済み
 			}
@@ -65,9 +81,9 @@ export function activate(context: vscode.ExtensionContext): void {
 	// コミット文面の修正（QuickPick で対象を選択）
 	const rewordCommand = vscode.commands.registerCommand(
 		"git-smart-commit.reword",
-		async () => {
+		async (sourceControl?: vscode.SourceControl) => {
 			try {
-				await rewordCommit(outputChannel);
+				await rewordCommit(outputChannel, sourceControl?.rootUri);
 			} catch {
 				// rewordCommit 側でエラー表示済み
 			}

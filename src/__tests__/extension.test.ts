@@ -332,23 +332,64 @@ describe("extension", () => {
 		void registeredHandlers.get("git-smart-commit.runBodyAutoConfirm")?.();
 		void registeredHandlers.get("git-smart-commit.reword")?.();
 
-		expect(mockRunGitSc).toHaveBeenNthCalledWith(1, expect.any(Object), {
-			stageAll: true,
-			autoConfirm: true,
-		});
-		expect(mockRunGitSc).toHaveBeenNthCalledWith(2, expect.any(Object), {
-			stageAll: true,
-			includeBody: true,
-			autoConfirm: true,
-		});
-		expect(mockRunGitSc).toHaveBeenNthCalledWith(3, expect.any(Object), {
-			autoConfirm: true,
-		});
-		expect(mockRunGitSc).toHaveBeenNthCalledWith(4, expect.any(Object), {
-			includeBody: true,
-			autoConfirm: true,
-		});
-		expect(mockRewordCommit).toHaveBeenCalledWith(expect.any(Object));
+		expect(mockRunGitSc).toHaveBeenNthCalledWith(
+			1,
+			expect.any(Object),
+			{
+				stageAll: true,
+				autoConfirm: true,
+			},
+			undefined,
+		);
+		expect(mockRunGitSc).toHaveBeenNthCalledWith(
+			2,
+			expect.any(Object),
+			{
+				stageAll: true,
+				includeBody: true,
+				autoConfirm: true,
+			},
+			undefined,
+		);
+		expect(mockRunGitSc).toHaveBeenNthCalledWith(
+			3,
+			expect.any(Object),
+			{
+				autoConfirm: true,
+			},
+			undefined,
+		);
+		expect(mockRunGitSc).toHaveBeenNthCalledWith(
+			4,
+			expect.any(Object),
+			{
+				includeBody: true,
+				autoConfirm: true,
+			},
+			undefined,
+		);
+		expect(mockRewordCommit).toHaveBeenCalledWith(
+			expect.any(Object),
+			undefined,
+		);
+	});
+
+	it.each([
+		"runAddAutoConfirm",
+		"runAddBodyAutoConfirm",
+		"runAutoConfirm",
+		"runBodyAutoConfirm",
+		"reword",
+	])("SCM の対象 URI を %s コマンドへ引き渡す", async (command) => {
+		activate(mockContext);
+		const sourceControl = { rootUri: { fsPath: "/workspace/selected" } };
+		const handler = mockRegisterCommand.mock.calls.find(
+			(call) => call[0] === `git-smart-commit.${command}`,
+		)?.[1] as (source: typeof sourceControl) => Promise<void>;
+		await handler(sourceControl);
+		const args = (command === "reword" ? mockRewordCommit : mockRunGitSc).mock
+			.calls[0];
+		expect(args?.at(-1)).toBe(sourceControl.rootUri);
 	});
 
 	it("should not throw when command handler catches error", async () => {
@@ -365,10 +406,14 @@ describe("extension", () => {
 		expect(handler).toBeDefined();
 		// ハンドラ内で runGitSc がエラーを返しても例外にならないこと
 		await expect(handler!()).resolves.toBeUndefined();
-		expect(mockRunGitSc).toHaveBeenCalledWith(expect.any(Object), {
-			stageAll: true,
-			autoConfirm: true,
-		});
+		expect(mockRunGitSc).toHaveBeenCalledWith(
+			expect.any(Object),
+			{
+				stageAll: true,
+				autoConfirm: true,
+			},
+			undefined,
+		);
 	});
 
 	it("should not throw when reword handler catches error", async () => {
@@ -381,7 +426,10 @@ describe("extension", () => {
 
 		expect(handler).toBeDefined();
 		await expect(handler!()).resolves.toBeUndefined();
-		expect(mockRewordCommit).toHaveBeenCalledWith(expect.any(Object));
+		expect(mockRewordCommit).toHaveBeenCalledWith(
+			expect.any(Object),
+			undefined,
+		);
 	});
 
 	it("should create status bar item with Left alignment and priority 100", () => {

@@ -175,6 +175,37 @@ describe("runGitSc", () => {
 		expect(mockSpawn).not.toHaveBeenCalled();
 	});
 
+	it.each([undefined, []])(
+		"ワークスペースが %j でも SCM の対象で実行する",
+		async (folders) => {
+			const vscode = await import("vscode");
+			const original = vscode.workspace.workspaceFolders;
+			Object.defineProperty(vscode.workspace, "workspaceFolders", {
+				value: folders,
+				writable: true,
+				configurable: true,
+			});
+			try {
+				const targetUri = { fsPath: "/workspace/selected" };
+				const proc = createMockProcess();
+				mockSpawn.mockReturnValue(proc);
+				const promise = runGitSc(
+					mockOutputChannel as never,
+					{},
+					targetUri as never,
+				);
+				proc.__emit("close", 0);
+				await promise;
+				expect(mockGetGitWorkspaceRoot).toHaveBeenCalledWith([], targetUri);
+				expect(mockSpawn).toHaveBeenCalledOnce();
+			} finally {
+				Object.defineProperty(vscode.workspace, "workspaceFolders", {
+					value: original,
+				});
+			}
+		},
+	);
+
 	it("should spawn git-sc with -a flag when stageAll is true", async () => {
 		const proc = createMockProcess();
 		mockSpawn.mockReturnValue(proc);

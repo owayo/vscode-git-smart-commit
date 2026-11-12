@@ -39,10 +39,13 @@ function stripGitTrailingLineTerminator(output: string): string {
 
 export function getGitWorkspaceRoot(
 	workspaceFolders: readonly vscode.WorkspaceFolder[],
+	targetUri?: vscode.Uri,
 ): string | null {
 	let gitCommand: string | undefined;
+	// SCM から明示された対象が無効でも、別のリポジトリへ切り替えてコミットしない。
+	const candidates = targetUri ? [{ uri: targetUri }] : workspaceFolders;
 
-	for (const folder of workspaceFolders) {
+	for (const folder of candidates) {
 		// 削除済み・ファイル化した候補を除外し、後続の正常なリポジトリを検出する。
 		// URI の scheme は限定せず、リモート拡張ホストで参照できる fsPath も扱う。
 		if (

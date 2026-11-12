@@ -48,6 +48,8 @@ export function getRecentCommits(
 				"-C",
 				workspaceRoot,
 				"log",
+				// log.showSignature の検証結果がハッシュ欄へ混入するのを防ぐ。
+				"--no-show-signature",
 				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
 				"-n",
 				String(safeLimit),
@@ -93,17 +95,18 @@ export function getRecentCommits(
 
 export async function rewordCommit(
 	outputChannel: vscode.OutputChannel,
+	targetUri?: vscode.Uri,
 ): Promise<void> {
 	const workspaceFolders = vscode.workspace.workspaceFolders;
 
-	if (!workspaceFolders || workspaceFolders.length === 0) {
+	if (!targetUri && (!workspaceFolders || workspaceFolders.length === 0)) {
 		vscode.window.showErrorMessage("No workspace folder open");
 		return;
 	}
 
 	let workspaceRoot: string | null;
 	try {
-		workspaceRoot = getGitWorkspaceRoot(workspaceFolders);
+		workspaceRoot = getGitWorkspaceRoot(workspaceFolders ?? [], targetUri);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		if (message.includes("ENOENT")) {

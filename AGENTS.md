@@ -85,6 +85,8 @@ src/
 
 ## Recent Maintenance Notes
 
+- **Maintenance (2026-11-12)**: SCM の `SourceControl.rootUri` を全5コマンドから共通の Git ルート解決へ渡し、明示対象が無効なら別リポジトリへ切り替えないよう修正した。ワークスペース外の SCM 対象も扱う。履歴取得に `--no-show-signature` を付け、`log.showSignature=true` によるハッシュへの検証結果混入を修正。回帰テスト12件を追加し、全338件、Statements 99.13% / Functions 100% を確認した。Node 26.13.1 / pnpm 12.20.0、Biome 2.6.7、Vitest / coverage-v8 5.1.0、vsce 4.1.0、ovsx 1.4.0 へ更新し、API型と最低対応版はインストール検証可能な VS Code 1.144.0 に揃えた。pnpm 12 と `packageManager`・CI の固定版を同期し、Biome の対象から生成 lockfile を除外した。リリースのビルド・VSIX 作成をタグ公開前へ移動し、旧 `out/` 成果物を版管理から除外した。詳細・公開後の経過期間フィルターの扱い・性能再計測は `docs/maintenance/2026-11-12.md` を参照。
+
 - **Maintenance (2026-10-31)**: Git の絶対パス解決を `gitExecutable.ts` に集約し、未検出時の通知と最新 PATH の扱いを統一。履歴の存在確認は `hasReachableCommit` の三値判定と `rev-list --count --max-count=1 --all` に変更し、元の log エラーを保持したまま全件走査を除去した。削除済み・ファイル化した workspace 候補はスキップし、URI scheme は限定しない。キャンセル後の error/close 連続発火で shutdown 登録が消える不具合は、重複ポーリングのガードより先に登録を復元して修正。実 Git の結合テストを含む326テスト、型チェック、Lint、VSIX作成、監査0件を確認。5万コミットの判定は15回の中央値で9,085.32msから75.19msへ短縮し、CPU・RSSも減少。詳細と生データは `docs/maintenance/2026-10-31.md` を参照。Node 24.21.0 / pnpm 11.5.2 は `mise.toml` に固定し、`mise install` 後は `mise exec --` で実行する。Vitest / coverage-v8 は5.0.5、vsceは4.0.0、Biomeは2.5.15、VS Code API型とengineは1.140.0へ更新し、security overrideも更新した。
 
 - **Maintenance (Biome patch更新とsecurity override更新)**: `depup --install --include-pinned` で `@biomejs/biome` の宣言範囲を ^2.5.4 から ^2.5.5 へ更新した（lockfileの解決版と `biome.jsonc` のschemaは引き続き2.5.6）。最新の `pnpm audit --audit-level moderate` で修正版が要求された `brace-expansion` 5.0.9、`fast-uri` 3.1.5、`js-yaml` 4.3.1、`nanoid` 3.3.17、`postcss` 8.5.23、`undici` 7.29.0 を `pnpm-workspace.yaml` のoverrideへ反映し、`dependencyOverrides.test.ts` の有効行完全一致による退行テストも同時に更新した。監査は `No known vulnerabilities found` へ回復し、Lint / Format / TypeScript compile / 311テスト / VSIX packageはすべて成功。v8 coverageはStatements 99.14% / Functions 100%。全体レビューでは確実な追加バグや必要なリファクタリングは見つからず、`astro-sight review --dir . --git` も未解決影響 / API変更 / dead symbolなし。
@@ -283,7 +285,7 @@ src/
 ## VS Code Extension Details
 
 - **Activation**: `workspaceContains:.git`
-- **Engine**: `vscode ^1.140.0`
+- **Engine**: `vscode ^1.144.0`
 - **Publisher**: owayo
 - **Commands**: 5 commands (4 commit variants + reword)
 - **Keybindings**: `Cmd+Shift+G C` (commit), `Cmd+Shift+G R` (reword)

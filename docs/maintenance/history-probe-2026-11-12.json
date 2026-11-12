@@ -1,0 +1,324 @@
+{
+	"system": "Darwin",
+	"machine": "arm64",
+	"git": "git version 2.54.0 (Apple Git-157)",
+	"runs": 7,
+	"warmups": 3,
+	"cases": [
+		{
+			"commits": 0,
+			"samples": {
+				"before": [
+					{
+						"wall_ms": 42.795,
+						"cpu_ms": 12.171,
+						"peak_rss_kib": 6160.0,
+						"count": 0
+					},
+					{
+						"wall_ms": 18.355416,
+						"cpu_ms": 12.490000000000002,
+						"peak_rss_kib": 6160.0,
+						"count": 0
+					},
+					{
+						"wall_ms": 18.903958,
+						"cpu_ms": 12.306999999999999,
+						"peak_rss_kib": 6176.0,
+						"count": 0
+					},
+					{
+						"wall_ms": 23.041333,
+						"cpu_ms": 13.661,
+						"peak_rss_kib": 6176.0,
+						"count": 0
+					},
+					{
+						"wall_ms": 22.801209,
+						"cpu_ms": 14.56,
+						"peak_rss_kib": 6144.0,
+						"count": 0
+					},
+					{
+						"wall_ms": 24.130833,
+						"cpu_ms": 16.014999999999997,
+						"peak_rss_kib": 6176.0,
+						"count": 0
+					},
+					{
+						"wall_ms": 23.022042,
+						"cpu_ms": 15.751999999999999,
+						"peak_rss_kib": 6176.0,
+						"count": 0
+					}
+				],
+				"after": [
+					{
+						"wall_ms": 18.636459,
+						"cpu_ms": 12.52,
+						"peak_rss_kib": 6160.0,
+						"count": 0
+					},
+					{
+						"wall_ms": 20.539084,
+						"cpu_ms": 13.995999999999999,
+						"peak_rss_kib": 6176.0,
+						"count": 0
+					},
+					{
+						"wall_ms": 19.593459,
+						"cpu_ms": 12.51,
+						"peak_rss_kib": 6160.0,
+						"count": 0
+					},
+					{
+						"wall_ms": 21.172625,
+						"cpu_ms": 13.34,
+						"peak_rss_kib": 6176.0,
+						"count": 0
+					},
+					{
+						"wall_ms": 20.520125,
+						"cpu_ms": 13.752999999999998,
+						"peak_rss_kib": 6176.0,
+						"count": 0
+					},
+					{
+						"wall_ms": 20.88225,
+						"cpu_ms": 13.836999999999998,
+						"peak_rss_kib": 6176.0,
+						"count": 0
+					},
+					{
+						"wall_ms": 25.648042,
+						"cpu_ms": 13.791999999999998,
+						"peak_rss_kib": 6160.0,
+						"count": 0
+					}
+				]
+			},
+			"median": {
+				"before": {
+					"wall_ms": 23.022042,
+					"cpu_ms": 13.661,
+					"peak_rss_kib": 6176.0
+				},
+				"after": {
+					"wall_ms": 20.539084,
+					"cpu_ms": 13.752999999999998,
+					"peak_rss_kib": 6176.0
+				}
+			}
+		},
+		{
+			"commits": 100,
+			"samples": {
+				"before": [
+					{
+						"wall_ms": 25.183875,
+						"cpu_ms": 17.883999999999997,
+						"peak_rss_kib": 6464.0,
+						"count": 100
+					},
+					{
+						"wall_ms": 26.960333,
+						"cpu_ms": 17.857,
+						"peak_rss_kib": 6464.0,
+						"count": 100
+					},
+					{
+						"wall_ms": 26.441125,
+						"cpu_ms": 16.936,
+						"peak_rss_kib": 6464.0,
+						"count": 100
+					},
+					{
+						"wall_ms": 24.016,
+						"cpu_ms": 17.483999999999998,
+						"peak_rss_kib": 6464.0,
+						"count": 100
+					},
+					{
+						"wall_ms": 23.191333,
+						"cpu_ms": 16.948999999999998,
+						"peak_rss_kib": 6448.0,
+						"count": 100
+					},
+					{
+						"wall_ms": 24.389333,
+						"cpu_ms": 15.863999999999999,
+						"peak_rss_kib": 6432.0,
+						"count": 100
+					},
+					{
+						"wall_ms": 22.168958,
+						"cpu_ms": 14.286,
+						"peak_rss_kib": 6464.0,
+						"count": 100
+					}
+				],
+				"after": [
+					{
+						"wall_ms": 22.031416,
+						"cpu_ms": 14.373000000000001,
+						"peak_rss_kib": 6432.0,
+						"count": 1
+					},
+					{
+						"wall_ms": 19.77975,
+						"cpu_ms": 13.853000000000002,
+						"peak_rss_kib": 6400.0,
+						"count": 1
+					},
+					{
+						"wall_ms": 23.160041,
+						"cpu_ms": 16.174,
+						"peak_rss_kib": 6416.0,
+						"count": 1
+					},
+					{
+						"wall_ms": 23.887583,
+						"cpu_ms": 16.926,
+						"peak_rss_kib": 6400.0,
+						"count": 1
+					},
+					{
+						"wall_ms": 20.697125,
+						"cpu_ms": 14.688999999999998,
+						"peak_rss_kib": 6368.0,
+						"count": 1
+					},
+					{
+						"wall_ms": 22.206167,
+						"cpu_ms": 15.438,
+						"peak_rss_kib": 6368.0,
+						"count": 1
+					},
+					{
+						"wall_ms": 19.758542,
+						"cpu_ms": 13.443999999999999,
+						"peak_rss_kib": 6432.0,
+						"count": 1
+					}
+				]
+			},
+			"median": {
+				"before": {
+					"wall_ms": 24.389333,
+					"cpu_ms": 16.948999999999998,
+					"peak_rss_kib": 6464.0
+				},
+				"after": {
+					"wall_ms": 22.031416,
+					"cpu_ms": 14.688999999999998,
+					"peak_rss_kib": 6400.0
+				}
+			}
+		},
+		{
+			"commits": 50000,
+			"samples": {
+				"before": [
+					{
+						"wall_ms": 183.282041,
+						"cpu_ms": 174.885,
+						"peak_rss_kib": 20336.0,
+						"count": 50000
+					},
+					{
+						"wall_ms": 182.310792,
+						"cpu_ms": 174.36499999999998,
+						"peak_rss_kib": 20336.0,
+						"count": 50000
+					},
+					{
+						"wall_ms": 198.652916,
+						"cpu_ms": 188.844,
+						"peak_rss_kib": 20336.0,
+						"count": 50000
+					},
+					{
+						"wall_ms": 204.956709,
+						"cpu_ms": 196.761,
+						"peak_rss_kib": 20352.0,
+						"count": 50000
+					},
+					{
+						"wall_ms": 205.590917,
+						"cpu_ms": 196.05899999999997,
+						"peak_rss_kib": 20352.0,
+						"count": 50000
+					},
+					{
+						"wall_ms": 195.524083,
+						"cpu_ms": 187.30199999999996,
+						"peak_rss_kib": 20336.0,
+						"count": 50000
+					},
+					{
+						"wall_ms": 212.872333,
+						"cpu_ms": 200.664,
+						"peak_rss_kib": 20304.0,
+						"count": 50000
+					}
+				],
+				"after": [
+					{
+						"wall_ms": 21.332625,
+						"cpu_ms": 13.052999999999999,
+						"peak_rss_kib": 6464.0,
+						"count": 1
+					},
+					{
+						"wall_ms": 19.73075,
+						"cpu_ms": 11.911999999999999,
+						"peak_rss_kib": 6496.0,
+						"count": 1
+					},
+					{
+						"wall_ms": 23.045667,
+						"cpu_ms": 15.973999999999998,
+						"peak_rss_kib": 6512.0,
+						"count": 1
+					},
+					{
+						"wall_ms": 19.889167,
+						"cpu_ms": 13.894,
+						"peak_rss_kib": 6528.0,
+						"count": 1
+					},
+					{
+						"wall_ms": 22.055417,
+						"cpu_ms": 13.642999999999999,
+						"peak_rss_kib": 6496.0,
+						"count": 1
+					},
+					{
+						"wall_ms": 19.7835,
+						"cpu_ms": 12.403999999999998,
+						"peak_rss_kib": 6480.0,
+						"count": 1
+					},
+					{
+						"wall_ms": 22.115709,
+						"cpu_ms": 16.285,
+						"peak_rss_kib": 6496.0,
+						"count": 1
+					}
+				]
+			},
+			"median": {
+				"before": {
+					"wall_ms": 198.652916,
+					"cpu_ms": 188.844,
+					"peak_rss_kib": 20336.0
+				},
+				"after": {
+					"wall_ms": 21.332625,
+					"cpu_ms": 13.642999999999999,
+					"peak_rss_kib": 6496.0
+				}
+			}
+		}
+	]
+}

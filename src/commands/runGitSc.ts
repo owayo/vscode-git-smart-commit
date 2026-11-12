@@ -11,17 +11,18 @@ export interface GitScOptions {
 export async function runGitSc(
 	outputChannel: vscode.OutputChannel,
 	options: GitScOptions = {},
+	targetUri?: vscode.Uri,
 ): Promise<void> {
 	const workspaceFolders = vscode.workspace.workspaceFolders;
 
-	if (!workspaceFolders || workspaceFolders.length === 0) {
+	if (!targetUri && (!workspaceFolders || workspaceFolders.length === 0)) {
 		vscode.window.showErrorMessage("No workspace folder open");
 		return;
 	}
 
 	let workspaceRoot: string | null;
 	try {
-		workspaceRoot = getGitWorkspaceRoot(workspaceFolders);
+		workspaceRoot = getGitWorkspaceRoot(workspaceFolders ?? [], targetUri);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		if (message.includes("ENOENT")) {

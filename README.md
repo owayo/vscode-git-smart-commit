@@ -57,7 +57,7 @@
 
 ## 動作要件
 
-VS Code `1.140.0` 以上が必要です。
+VS Code `1.144.0` 以上が必要です。
 
 [git-sc](https://github.com/owayo/git-smart-commit) CLI をインストールし、PATH に追加してください：
 
@@ -108,13 +108,13 @@ code --install-extension vscode-git-smart-commit-*.vsix
 
 SCM タイトルバーの ✨ (スパークル) アイコンをクリックしてサブメニューを開きます：
 
-| コマンド | 説明 |
-|---------|------|
-| Stage All & Commit (`-a -y`) | すべての変更をステージしてコミット |
+| コマンド                                  | 説明                                         |
+| ----------------------------------------- | -------------------------------------------- |
+| Stage All & Commit (`-a -y`)              | すべての変更をステージしてコミット           |
 | Stage All & Commit with Body (`-a -b -y`) | すべての変更をステージして本文付きでコミット |
-| Commit (`-y`) | ステージ済みの変更のみコミット |
-| Commit with Body (`-b -y`) | ステージ済みの変更を本文付きでコミット |
-| Reword Commit | 過去のコミットメッセージを選択して書き換え |
+| Commit (`-y`)                             | ステージ済みの変更のみコミット               |
+| Commit with Body (`-b -y`)                | ステージ済みの変更を本文付きでコミット       |
+| Reword Commit                             | 過去のコミットメッセージを選択して書き換え   |
 
 ### コマンドパレット
 
@@ -128,26 +128,26 @@ SCM タイトルバーの ✨ (スパークル) アイコンをクリックし�
 
 ### キーボードショートカット
 
-| コマンド | Windows / Linux | macOS |
-|---------|-----------------|-------|
+| コマンド                   | Windows / Linux  | macOS           |
+| -------------------------- | ---------------- | --------------- |
 | すべてステージしてコミット | `Ctrl+Shift+G C` | `Cmd+Shift+G C` |
 | コミットメッセージ書き換え | `Ctrl+Shift+G R` | `Cmd+Shift+G R` |
 
 ## 設定
 
-| 設定項目 | デフォルト | 説明 |
-|---------|-----------|------|
-| `gitSmartCommit.autoConfirm` | `false` | 確認プロンプトなしで自動的にコミット (`-y` フラグ) |
-| `gitSmartCommit.includeBody` | `false` | 本文付きの詳細なコミットメッセージを生成 (`-b` フラグ) |
-| `gitSmartCommit.showStatusBarButton` | `true` | ステータスバーに git-sc ボタンを表示 |
+| 設定項目                             | デフォルト | 説明                                                   |
+| ------------------------------------ | ---------- | ------------------------------------------------------ |
+| `gitSmartCommit.autoConfirm`         | `false`    | 確認プロンプトなしで自動的にコミット (`-y` フラグ)     |
+| `gitSmartCommit.includeBody`         | `false`    | 本文付きの詳細なコミットメッセージを生成 (`-b` フラグ) |
+| `gitSmartCommit.showStatusBarButton` | `true`     | ステータスバーに git-sc ボタンを表示                   |
 
 コマンド実行時に引数を明示した場合は、その値がワークスペース設定より優先されます。
 
-複数ルートワークスペースでは、開いているフォルダーを順に確認し、削除済み・通常ファイルになった候補を除外して、最初に見つかった Git リポジトリのルートで `git-sc` と履歴読み込みを実行します。
+複数ルートワークスペースでは、開いているフォルダーを順に確認し、削除済み・通常ファイルになった候補を除外して、最初に見つかった Git リポジトリのルートで `git-sc` と履歴読み込みを実行します。SCMメニューから実行した場合は、そのメニューのリポジトリを対象とします。対象が削除済みなどで検出できない場合は停止し、別のリポジトリへ切り替えません。
 
 ## 開発
 
-Node.js 24.21.0 と pnpm 11.5.2 を `mise.toml` で固定しています。mise を使う場合は `mise install` 後、以下のコマンドに `mise exec --` を付けて実行してください。
+Node.js 26.13.1 と pnpm 12.20.0 を `mise.toml` で固定しています。mise を使う場合は `mise install` 後、以下のコマンドに `mise exec --` を付けて実行してください。
 
 ```bash
 # リポジトリをクローン
@@ -176,7 +176,7 @@ pnpm run test
 pnpm audit --audit-level moderate
 ```
 
-開発依存の脆弱性は `pnpm-workspace.yaml` の `overrides` と lockfile で修正版へ固定します。Vitest 5.0.5、vsce 4.0.0 への更新後も、`pnpm audit --audit-level moderate` で脆弱性0件を確認しています。`@azure/identity` 4.14.1、`minimatch` 11.0.1、`brace-expansion` 5.0.12、`nanoid` 3.3.18、`qs` 6.16.1、`source-map-js` 1.2.2、Vite 7.3.7 などの指定は `dependencyOverrides.test.ts` で検証します。vsce の minimatch 利用箇所は維持される公開 API のみであり、VSIX 作成も検証しています。
+開発依存の脆弱性は `pnpm-workspace.yaml` の `overrides` と lockfile で修正版へ固定します。Vitest 5.1.0、vsce 4.1.0 への更新後も、`pnpm audit --audit-level moderate` で脆弱性0件を確認しています。`@azure/identity` 4.14.1、`minimatch` 11.0.1、`brace-expansion` 5.0.12、`nanoid` 3.3.18、`qs` 6.16.1、`source-map-js` 1.2.2、Vite 7.3.7 などの指定は `dependencyOverrides.test.ts` で検証します。vsce の minimatch 利用箇所は維持される公開 API のみであり、VSIX 作成も検証しています。
 
 pnpm の install script は `allowBuilds` で承認します。Biome 更新時は `pnpm exec biome migrate --write` を実行し、schema と実バージョンを揃えます。`@types/vscode` 更新時は `engines.vscode` も同じ最小バージョンへ揃えます。
 
@@ -186,7 +186,9 @@ pnpm の install script は `allowBuilds` で承認します。Biome 更新時�
 
 今回さらに、activate 前の新規モジュールで `deactivate()` を呼んでもプロセス終了処理を誤実行しないこと、Windows で `PATH` / `Path` / `path` がすべて未定義ならファイル探索を行わず `null` を返すこと、実行中の `git-sc` が無い shutdown では警告ログを出さないことを境界テストとして固定しています。
 
-キャンセルの状態機械には、通常の deactivate とキャンセル直後の deactivate の両方で、POSIX プロセスグループへ即 SIGKILL を送る回帰テストがあります。`error` と `close` がどちらの順序で連続しても、消滅待ちを二重に開始せず、拡張停止時の強制終了を維持します。非 `Error` 値による例外と、Windows のキャンセル後のエラーも検証しています。全326テストが成功し、v8 coverage は Statements 99.13% / Functions 100% でした。
+キャンセルの状態機械には、通常の deactivate とキャンセル直後の deactivate の両方で、POSIX プロセスグループへ即 SIGKILL を送る回帰テストがあります。`error` と `close` がどちらの順序で連続しても、消滅待ちを二重に開始せず、拡張停止時の強制終了を維持します。非 `Error` 値による例外と、Windows のキャンセル後のエラーも検証しています。全338テストが成功し、v8 coverage は Statements 99.13% / Functions 100% でした。
+
+署名表示 (`log.showSignature=true`) が有効でも、履歴の解析時は署名検証結果を除外して正しいコミットハッシュを取得します。今回の修正根拠、依存更新の制約、検証結果は[2026-11-12の点検記録](docs/maintenance/2026-11-12.md)を参照してください。
 
 ### デバッグ
 

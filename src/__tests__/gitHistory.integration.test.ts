@@ -71,6 +71,64 @@ describe("実際の Git による履歴とワークスペース検出", () => {
 		);
 	});
 
+	it("SCM から指定されたリポジトリを先頭のワークスペースより優先する", () => {
+		expect(
+			getGitWorkspaceRoot(
+				[{ uri: { fsPath: empty } }] as never,
+				{ fsPath: populated } as never,
+			),
+		).toBe(git(populated, ["rev-parse", "--show-toplevel"]).trim());
+	});
+
+	it("SCM の対象が削除済みでも別のリポジトリを選ばない", () => {
+		expect(
+			getGitWorkspaceRoot(
+				[{ uri: { fsPath: populated } }] as never,
+				{ fsPath: join(root, "missing-scm-repository") } as never,
+			),
+		).toBeNull();
+	});
+
+	it("署名表示が有効でも検証結果をコミットハッシュへ混入させない", () => {
+		const signed = join(root, "signed");
+		mkdirSync(signed);
+		git(signed, ["init", "-b", "main"]);
+		const tree = git(signed, ["mktree"]).trim();
+		// 署名検証できない履歴も、秘密鍵や検証コマンドを必要とせず再現する。
+		// Git の SSH 署名表示は検証失敗の診断も stdout へ出す。
+		const rawCommit = [
+			`tree ${tree}`,
+			"author Test Author <you@example.com> 1700000000 +0000",
+			"committer Test Author <you@example.com> 1700000000 +0000",
+			"gpgsig -----BEGIN SSH SIGNATURE-----",
+			" invalid",
+			" -----END SSH SIGNATURE-----",
+			"",
+			"signed subject",
+			"",
+		].join("\n");
+		const hash = execFileSync(
+			gitCommand,
+			["-C", signed, "hash-object", "-t", "commit", "-w", "--stdin"],
+			{ input: rawCommit, encoding: "utf8" },
+		).trim();
+		git(signed, ["update-ref", "refs/heads/main", hash]);
+		git(signed, ["config", "log.showSignature", "true"]);
+		git(signed, [
+			"config",
+			"gpg.ssh.allowedSignersFile",
+			process.platform === "win32" ? "NUL" : "/dev/null",
+		]);
+
+		const commits = getRecentCommits(signed);
+		expect(commits).toHaveLength(1);
+		expect(commits[0]?.hash).toBe(
+			git(signed, ["rev-parse", "--short", "HEAD"]).trim(),
+		);
+		expect(commits[0]?.message).toBe("signed subject");
+		expect(commits[0]?.author).toBe("Test Author");
+	});
+
 	it("orphan HEAD に他の ref の履歴があれば元の git log エラーを保持する", () => {
 		git(populated, ["symbolic-ref", "HEAD", "refs/heads/unborn"]);
 		try {

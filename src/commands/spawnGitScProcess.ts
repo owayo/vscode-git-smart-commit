@@ -35,10 +35,8 @@ const activeGitScProcesses = new Map<ChildProcess, () => void>();
  *
  * 各プロセスの終了ハンドラは内部で `isCancelled` を立ててから終了させる。これにより
  * 終了に伴う `close` イベントが「キャンセル」として扱われ、拡張停止時に誤った成功/失敗
- * 通知や `git.refresh` が走るのを防ぐ。終了シグナルはグレースフルな SIGTERM (Windows は
- * `taskkill /T /F`) とする。git の操作中断による破損リスクと、VS Code shutdown のタイムアウトで
- * 確実には走らない SIGKILL タイマーを避けるためで、SIGTERM を無視するプロセスの強制終了は
- * 通常のユーザーキャンセル経路 (5 秒後 SIGKILL 昇格) に委ねる。
+ * 通知や `git.refresh` が走るのを防ぐ。拡張ホスト終了後は昇格タイマーを実行できないため、
+ * POSIX は即 SIGKILL、Windows は `taskkill /T /F` で子孫も含めて強制終了する。
  */
 export function terminateActiveGitScProcesses(
 	outputChannel: vscode.OutputChannel,

@@ -173,6 +173,7 @@ describe("getRecentCommits", () => {
 				"-C",
 				"/workspace",
 				"log",
+				"--no-show-signature",
 				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
 				"-n",
 				"10",
@@ -206,6 +207,7 @@ describe("getRecentCommits", () => {
 				"-C",
 				"/workspace",
 				"log",
+				"--no-show-signature",
 				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
 				"-n",
 				"10",
@@ -238,6 +240,7 @@ describe("getRecentCommits", () => {
 				"-C",
 				"/workspace",
 				"log",
+				"--no-show-signature",
 				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
 				"-n",
 				"5",
@@ -257,6 +260,7 @@ describe("getRecentCommits", () => {
 				"-C",
 				"/workspace",
 				"log",
+				"--no-show-signature",
 				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
 				"-n",
 				"10",
@@ -276,6 +280,7 @@ describe("getRecentCommits", () => {
 				"-C",
 				"/workspace",
 				"log",
+				"--no-show-signature",
 				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
 				"-n",
 				"10",
@@ -340,6 +345,7 @@ describe("getRecentCommits", () => {
 				"-C",
 				"/workspace",
 				"log",
+				"--no-show-signature",
 				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
 				"-n",
 				"10",
@@ -359,6 +365,7 @@ describe("getRecentCommits", () => {
 				"-C",
 				"/workspace",
 				"log",
+				"--no-show-signature",
 				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
 				"-n",
 				"10",
@@ -378,6 +385,7 @@ describe("getRecentCommits", () => {
 				"-C",
 				"/workspace",
 				"log",
+				"--no-show-signature",
 				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
 				"-n",
 				"10",
@@ -411,6 +419,7 @@ describe("getRecentCommits", () => {
 				"-C",
 				"/workspace",
 				"log",
+				"--no-show-signature",
 				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
 				"-n",
 				"5",
@@ -519,6 +528,7 @@ describe("getRecentCommits", () => {
 				"-C",
 				"/workspace",
 				"log",
+				"--no-show-signature",
 				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
 				"-n",
 				"10",
@@ -869,6 +879,33 @@ describe("rewordCommit", () => {
 		);
 		expect(mockExecuteCommand).toHaveBeenCalledWith("git.refresh");
 	});
+
+	it.each([undefined, []])(
+		"ワークスペースが %j でも SCM の対象履歴を読み込む",
+		async (folders) => {
+			const vscode = await import("vscode");
+			const original = vscode.workspace.workspaceFolders;
+			Object.defineProperty(vscode.workspace, "workspaceFolders", {
+				value: folders,
+				writable: true,
+				configurable: true,
+			});
+			try {
+				const targetUri = { fsPath: "/workspace/selected" };
+				mockExecFileSync.mockReturnValue("");
+				await rewordCommit(mockOutputChannel as never, targetUri as never);
+				expect(mockGetGitWorkspaceRoot).toHaveBeenCalledWith([], targetUri);
+				expect(mockExecFileSync).toHaveBeenCalled();
+				expect(mockShowWarningMessage).toHaveBeenCalledWith(
+					"No commits found in this repository",
+				);
+			} finally {
+				Object.defineProperty(vscode.workspace, "workspaceFolders", {
+					value: original,
+				});
+			}
+		},
+	);
 
 	it("should use the resolved Git workspace root for reword", async () => {
 		mockGetGitWorkspaceRoot.mockReturnValue("/test/repo");
@@ -1237,6 +1274,7 @@ describe("rewordCommit", () => {
 				"-C",
 				"/test/workspace",
 				"log",
+				"--no-show-signature",
 				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
 				"-n",
 				"15",

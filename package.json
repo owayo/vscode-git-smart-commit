@@ -3,7 +3,7 @@
 	"displayName": "git-sc (Smart Commit)",
 	"description": "Run git-sc command with one click - AI-powered smart commit message generator",
 	"version": "26.11.100",
-	"packageManager": "pnpm@11.5.2",
+	"packageManager": "pnpm@12.20.0",
 	"publisher": "owayo",
 	"license": "MIT",
 	"icon": "icon.png",
@@ -12,7 +12,7 @@
 		"url": "https://github.com/owayo/vscode-git-smart-commit"
 	},
 	"engines": {
-		"vscode": "^1.140.0"
+		"vscode": "^1.144.0"
 	},
 	"categories": [
 		"SCM Providers",
@@ -146,13 +146,13 @@
 		"test": "vitest run"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "^2.5.15",
-		"@types/node": "^26.6.5",
-		"@types/vscode": "1.140.0",
-		"@vitest/coverage-v8": "5.0.5",
-		"@vscode/vsce": "^4.0.0",
-		"ovsx": "^1.3.0",
+		"@biomejs/biome": "^2.6.7",
+		"@types/node": "^26.6.6",
+		"@types/vscode": "1.144.0",
+		"@vitest/coverage-v8": "5.1.0",
+		"@vscode/vsce": "^4.1.0",
+		"ovsx": "^1.4.0",
 		"typescript": "^7.0.2",
-		"vitest": "^5.0.5"
+		"vitest": "^5.1.0"
 	}
 }
