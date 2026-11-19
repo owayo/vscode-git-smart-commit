@@ -1,6 +1,10 @@
 packages:
   - "."
 
+# pnpm の版は mise.toml が正。package.json の packageManager は mise を使わない開発者向けに
+# 同じ版で残し、食い違ったときは別の pnpm を黙って取得・実行せず失敗させる。
+pmOnFail: error
+
 allowBuilds:
   "@vscode/vsce-sign": true
   esbuild: true

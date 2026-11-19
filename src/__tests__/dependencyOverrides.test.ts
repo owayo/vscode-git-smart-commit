@@ -13,6 +13,48 @@ describe("dependency security overrides", () => {
 		expect(packageJson.engines?.vscode).toBe(`^${vscodeTypesVersion}`);
 	});
 
+	it("keeps packageManager aligned with the pnpm pinned in mise.toml", () => {
+		const packageJson = JSON.parse(
+			readFileSync(join(process.cwd(), "package.json"), "utf-8"),
+		);
+		// pnpm の版は mise.toml の [tools] が正。CI も mise-action でこの版を入れる。
+		let section = "";
+		let misePnpmVersion: string | undefined;
+		for (const rawLine of readFileSync(
+			join(process.cwd(), "mise.toml"),
+			"utf-8",
+		).split("\n")) {
+			const line = rawLine.replace(/#.*$/, "").trim();
+			const header = line.match(/^\[([^\]]+)\]$/);
+			if (header) {
+				section = header[1] ?? "";
+				continue;
+			}
+			const pnpm = line.match(/^pnpm\s*=\s*"([^"]+)"$/);
+			if (section === "tools" && pnpm) {
+				misePnpmVersion = pnpm[1];
+			}
+		}
+
+		expect(misePnpmVersion).toMatch(/^\d+\.\d+\.\d+$/);
+		expect(packageJson.packageManager).toBe(`pnpm@${misePnpmVersion}`);
+	});
+
+	it("fails instead of switching pnpm when packageManager differs", () => {
+		// 既定の pmOnFail: download は packageManager の版を黙って取得・実行し、
+		// mise.toml で固定した pnpm を上書きする。pnpm が読むのはトップレベルの設定だけなので、
+		// 字下げの無い行だけを照合し、別のキーの配下へ移った設定やコメントアウトを見逃さない。
+		// 値の引用符と行末のコメントは YAML として同じ意味なので許容する。
+		const workspaceConfig = readFileSync(
+			join(process.cwd(), "pnpm-workspace.yaml"),
+			"utf-8",
+		);
+
+		expect(workspaceConfig).toMatch(
+			/^pmOnFail:[ \t]*(["']?)error\1[ \t]*(?:#.*)?\r?$/m,
+		);
+	});
+
 	it("keeps Biome schema aligned with the installed version", () => {
 		const biomePackage = JSON.parse(
 			readFileSync(

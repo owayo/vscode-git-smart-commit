@@ -6,26 +6,28 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-
-      # actions/setup-node@v5 は package-manager-cache が既定 true で、package.json の
-      # packageManager (pnpm) を検出して pnpm でキャッシュしようとする。pnpm/action-setup を
-      # 先に走らせて pnpm を PATH に通しておかないと "Unable to locate executable file: pnpm" で
-      # 失敗するため、Setup pnpm を Setup Node.js より前に配置する。
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v5
+      - uses: actions/checkout@v7
         with:
-          cache: true
+          persist-credentials: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
+      # Node.js と pnpm の版は mise.toml が正。mise 本体は公開から 14 日以上たった最新の版を、
+      # 署名付きの checksum で確かめて入れる。
+      - uses: jdx/mise-action@v5
         with:
-          node-version: "26.13.1"
+          minimum_release_age: 14d
+          cache: false
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

@@ -13,94 +13,97 @@ on:
         default: false
 
 permissions:
-  contents: write
+  contents: read
+
+# 本番のリリースは 1 件ずつ実行する。待機枠は 1 件なので、dry run と既定のブランチ以外からの
+# 実行 (build の最初で失敗する) は実行ごとの別グループにして、待機中の本番リリースを押し出さない
+concurrency:
+  group: ${{ !inputs.dry_run && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && 'release' || format('release-{0}', github.run_id) }}
+  cancel-in-progress: false
 
 jobs:
-  prepare:
-    name: Prepare Release
+  # 依存を入れて VSIX を作るジョブ。install スクリプトが動くので、push できるトークンを持たせない。
+  # ビルドとパッケージ作成が成功してから、tag ジョブがリリースタグを公開する。
+  build:
+    name: Build VSIX
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.bump.outputs.version }}
       tag: ${{ steps.bump.outputs.tag }}
       vsix: ${{ steps.vsix.outputs.filename }}
     steps:
-      - uses: actions/checkout@v5
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Configure Git
+      # 本番のリリースは既定のブランチからだけ出す (dry_run はどのブランチでも動く)
+      - name: Check the branch
+        if: ${{ !inputs.dry_run }}
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ "${GITHUB_REF}" != "refs/heads/${DEFAULT_BRANCH}" ]; then
+            echo "::error::Run the release from ${DEFAULT_BRANCH} (this run is on ${GITHUB_REF})"
+            exit 1
+          fi
 
-      # pnpm を setup-node より先に導入する (setup-node@v5 の package-manager-cache 既定が
-      # package.json の packageManager=pnpm を検出し pnpm を要求するため)。
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v5
+      - uses: actions/checkout@v7
         with:
-          cache: true
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
+      # Node.js と pnpm の版は mise.toml が正
+      - uses: jdx/mise-action@v5
         with:
-          node-version: "26.13.1"
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+          minimum_release_age: 14d
+          cache: false
 
       - name: Bump version
         id: bump
         run: |
-          # 2 桁の年 (YY) 形式を使う
-          YEAR=$(date +%y)
-          MONTH=$(date +%-m)
-
-          CURRENT=$(grep '"version"' package.json | head -1 | sed 's/.*"\([0-9][^"]*\)".*/\1/')
+          set -euo pipefail
+          # 版は yy.m.counter (年は 2 桁、月はゼロ埋めしない、連番は 100 から)。
+          # 採番は JST で切り、年と月は 1 回の date で取って月の境目でずれないようにする
+          read -r YEAR MONTH <<< "$(TZ=Asia/Tokyo date '+%y %-m')"
+          CURRENT=$(node -p 'require("./package.json").version')
           echo "Current version: ${CURRENT}"
-
-          if echo "${CURRENT}" | grep -qE '^[0-9]{2,4}\.[0-9]{1,2}\.[0-9]+$'; then
-            OLD_YEAR=$(echo "${CURRENT}" | cut -d. -f1)
-            OLD_MONTH=$(echo "${CURRENT}" | cut -d. -f2)
-            OLD_COUNTER=$(echo "${CURRENT}" | cut -d. -f3)
-            OLD_YEAR_2DIGIT="${OLD_YEAR#20}"
-            if [ "${OLD_YEAR_2DIGIT}" = "${YEAR}" ] && [ "${OLD_MONTH}" = "${MONTH}" ]; then
-              NEW_COUNTER=$((OLD_COUNTER + 1))
-            else
-              NEW_COUNTER=100
+          COUNTER=100
+          if [[ "${CURRENT}" =~ ^([0-9]{2,4})\.([0-9]{1,2})\.([0-9]+)$ ]]; then
+            if [ "${BASH_REMATCH[1]#20}" = "${YEAR}" ] && [ "${BASH_REMATCH[2]}" = "${MONTH}" ]; then
+              COUNTER=$((BASH_REMATCH[3] + 1))
             fi
-          else
-            NEW_COUNTER=100
           fi
+          VERSION="${YEAR}.${MONTH}.${COUNTER}"
+          echo "New version: ${VERSION}"
 
-          NEW_VERSION="${YEAR}.${MONTH}.${NEW_COUNTER}"
-          echo "New version: ${NEW_VERSION}"
+          # package.json の version だけを書き換える。依存は入れず、version のスクリプトも走らせない
+          npm version "${VERSION}" --no-git-tag-version --ignore-scripts
 
-          # package.json を更新する
-          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${NEW_VERSION}\"/" package.json
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
 
-          echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "tag=v${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
-      # ビルドとパッケージ作成が成功してからリリースタグを公開する。
       - name: Build extension
         run: pnpm run compile
 
+      # pre-release の印は VSIX の作成時に付ける。vsce publish --packagePath は印の無い VSIX を
+      # --pre-release で公開すると失敗し、ovsx publish は作成済みの VSIX への --pre-release を無視する
       - name: Package extension
-        run: pnpm exec vsce package --no-dependencies
-
-      - name: Commit and tag
-        if: ${{ !inputs.dry_run }}
+        env:
+          PRE_RELEASE: ${{ inputs.pre_release }}
         run: |
-          git add package.json
-          git commit -m "release: v${{ steps.bump.outputs.version }}"
-          git tag -a "v${{ steps.bump.outputs.version }}" -m "Release v${{ steps.bump.outputs.version }}"
-          git push origin HEAD "v${{ steps.bump.outputs.version }}"
+          set -euo pipefail
+          if [ "${PRE_RELEASE}" = "true" ]; then
+            pnpm exec vsce package --no-dependencies --pre-release
+          else
+            pnpm exec vsce package --no-dependencies
+          fi
 
       - name: Dry run info
         if: ${{ inputs.dry_run }}
+        env:
+          TAG: ${{ steps.bump.outputs.tag }}
         run: |
-          echo "🧪 Dry run mode - skipping commit and publish"
-          echo "Would release: ${{ steps.bump.outputs.tag }}"
+          echo "🧪 Dry run mode - skipping commit, tag and publish"
+          echo "Would release: ${TAG}"
 
       - name: Get VSIX filename
         id: vsix
@@ -113,98 +116,152 @@ jobs:
           echo "filename=${VSIX_FILES[0]#./}" >> "$GITHUB_OUTPUT"
 
       - name: Upload VSIX artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: vsix
           path: "*.vsix"
+          if-no-files-found: error
+
+  # 版のコミットとタグを push するジョブ。依存は入れず、版の書き換えに使う node だけを取得する
+  tag:
+    name: Commit version and tag
+    needs: build
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # 名前は mise.toml の [tools] のキーのまま書く
+    env:
+      MISE_DISABLE_TOOLS: "pnpm"
+    steps:
+      # build と同じコミットから版を上げる。その間に既定のブランチが進んでいれば push は拒否される
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+
+      - uses: jdx/mise-action@v5
+        with:
+          minimum_release_age: 14d
+          cache: false
+
+      - name: Commit and tag
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          TAG: ${{ needs.build.outputs.tag }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # build で VSIX に入れた版と同じ値を書く
+          npm version "${VERSION}" --no-git-tag-version --ignore-scripts
+          git add package.json
+          git commit -m "release: ${TAG}"
+          git tag -a "${TAG}" -m "Release ${TAG}"
+          # ブランチとタグをまとめて更新する。どちらかが拒否されれば、どちらも更新しない
+          git push --atomic origin "HEAD:refs/heads/${DEFAULT_BRANCH}" "refs/tags/${TAG}"
 
   publish-vscode:
     name: Publish to VS Marketplace
-    needs: prepare
+    needs: [build, tag]
     if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-
-      # pnpm を setup-node より先に導入する (setup-node@v5 の package-manager-cache 既定が
-      # package.json の packageManager=pnpm を検出し pnpm を要求するため)。
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v5
+      - uses: actions/checkout@v7
         with:
-          cache: true
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
+      - uses: jdx/mise-action@v5
         with:
-          node-version: "26.13.1"
+          minimum_release_age: 14d
+          cache: false
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Download VSIX
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: vsix
 
+      # トークンは vsce が読む VSCE_PAT で渡し、コマンドラインに載せない
       - name: Publish
-        run: pnpm exec vsce publish --packagePath ${{ needs.prepare.outputs.vsix }} -p ${{ secrets.VS_MARKETPLACE_TOKEN }} ${{ inputs.pre_release && '--pre-release' || '' }}
+        env:
+          VSIX: ${{ needs.build.outputs.vsix }}
+          PRE_RELEASE: ${{ inputs.pre_release }}
+          VSCE_PAT: ${{ secrets.VS_MARKETPLACE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "${PRE_RELEASE}" = "true" ]; then
+            pnpm exec vsce publish --packagePath "${VSIX}" --pre-release
+          else
+            pnpm exec vsce publish --packagePath "${VSIX}"
+          fi
 
   publish-openvsx:
     name: Publish to Open VSX
-    needs: prepare
+    needs: [build, tag]
     if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-
-      # pnpm を setup-node より先に導入する (setup-node@v5 の package-manager-cache 既定が
-      # package.json の packageManager=pnpm を検出し pnpm を要求するため)。
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v5
+      - uses: actions/checkout@v7
         with:
-          cache: true
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
+      - uses: jdx/mise-action@v5
         with:
-          node-version: "26.13.1"
+          minimum_release_age: 14d
+          cache: false
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Download VSIX
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: vsix
 
+      # pre-release かどうかは VSIX に記録済み。トークンは ovsx が読む OVSX_PAT で渡す
       - name: Publish
-        run: pnpm exec ovsx publish ${{ needs.prepare.outputs.vsix }} -p ${{ secrets.OPEN_VSX_TOKEN }} ${{ inputs.pre_release && '--pre-release' || '' }}
+        env:
+          VSIX: ${{ needs.build.outputs.vsix }}
+          OVSX_PAT: ${{ secrets.OPEN_VSX_TOKEN }}
+        run: pnpm exec ovsx publish "${VSIX}"
 
   github-release:
     name: GitHub Release
-    needs: [prepare, publish-vscode, publish-openvsx]
-    if: ${{ !inputs.dry_run && !cancelled() && needs.prepare.result == 'success' }}
+    needs: [build, tag, publish-vscode, publish-openvsx]
+    if: ${{ !inputs.dry_run && !cancelled() && needs.tag.result == 'success' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Download VSIX
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: vsix
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: v${{ needs.prepare.outputs.version }}
-          name: v${{ needs.prepare.outputs.version }}
+          tag_name: ${{ needs.build.outputs.tag }}
+          name: ${{ needs.build.outputs.tag }}
           draft: false
           prerelease: ${{ inputs.pre_release }}
-          files: ${{ needs.prepare.outputs.vsix }}
+          files: ${{ needs.build.outputs.vsix }}
+          fail_on_unmatched_files: true
           generate_release_notes: true
 
       - name: Release summary
+        env:
+          TAG: ${{ needs.build.outputs.tag }}
+          VS_MARKETPLACE_RESULT: ${{ needs.publish-vscode.result }}
+          OPEN_VSX_RESULT: ${{ needs.publish-openvsx.result }}
         run: |
           {
-            echo "## Release v${{ needs.prepare.outputs.version }}"
-            echo "- VS Marketplace: ${{ needs.publish-vscode.result }}"
-            echo "- Open VSX: ${{ needs.publish-openvsx.result }}"
+            echo "## Release ${TAG}"
+            echo "- VS Marketplace: ${VS_MARKETPLACE_RESULT}"
+            echo "- Open VSX: ${OPEN_VSX_RESULT}"
           } >> "$GITHUB_STEP_SUMMARY"
