@@ -1,7 +1,10 @@
 import { execFileSync } from "child_process";
 import * as vscode from "vscode";
-import { getGitWorkspaceRoot } from "./getGitWorkspaceRoot";
 import { resolveGitExecutable } from "./gitExecutable";
+import {
+	resolveCommandWorkspaceRoot,
+	showGitCommandError,
+} from "./resolveCommandWorkspaceRoot";
 import { spawnGitScWithProgress } from "./spawnGitScProcess";
 
 export interface CommitInfo {
@@ -97,31 +100,8 @@ export async function rewordCommit(
 	outputChannel: vscode.OutputChannel,
 	targetUri?: vscode.Uri,
 ): Promise<void> {
-	const workspaceFolders = vscode.workspace.workspaceFolders;
-
-	if (!targetUri && (!workspaceFolders || workspaceFolders.length === 0)) {
-		vscode.window.showErrorMessage("No workspace folder open");
-		return;
-	}
-
-	let workspaceRoot: string | null;
-	try {
-		workspaceRoot = getGitWorkspaceRoot(workspaceFolders ?? [], targetUri);
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		if (message.includes("ENOENT")) {
-			vscode.window.showErrorMessage(
-				"Git command not found. Please install Git and ensure it's in your PATH.",
-			);
-		} else {
-			vscode.window.showErrorMessage(
-				`Failed to detect Git repository: ${message.substring(0, 100)}`,
-			);
-		}
-		return;
-	}
+	const workspaceRoot = resolveCommandWorkspaceRoot(targetUri);
 	if (!workspaceRoot) {
-		vscode.window.showErrorMessage("No Git repository found in open workspace");
 		return;
 	}
 
@@ -134,16 +114,7 @@ export async function rewordCommit(
 		outputChannel.appendLine(
 			`\n❌ Failed to load commit history: ${errorMessage}`,
 		);
-
-		if (errorMessage.includes("ENOENT")) {
-			vscode.window.showErrorMessage(
-				"Git command not found. Please install Git and ensure it's in your PATH.",
-			);
-		} else {
-			vscode.window.showErrorMessage(
-				`Failed to load commit history: ${errorMessage.substring(0, 100)}`,
-			);
-		}
+		showGitCommandError("Failed to load commit history", error);
 		return;
 	}
 

@@ -102,6 +102,23 @@ function isFullyQualifiedAbsolutePath(
 }
 
 /**
+ * PATH のうち、実行ファイルの探索に使ってよい完全修飾の絶対パス要素だけを順に返す。
+ *
+ * 空文字列・"."・"./"・".\\"・"bin"・".\tools"・"C:tools" や、Windows の drive-relative な
+ * "\tools" 等は全て除外する。相対要素や drive-relative 要素を許すと
+ * `spawn(..., { cwd: workspaceRoot })` と合わさって repo 配下や別ドライブのバイナリが
+ * 起動する余地を残すため、PATH を走査するすべての解決関数はこの一覧だけを使う。
+ */
+function getSafePathDirectories(isWindows: boolean): string[] {
+	return getPathEnvValue()
+		.split(isWindows ? ";" : ":")
+		.map((rawDir) => (isWindows ? rawDir.trim() : rawDir))
+		.filter(
+			(dir) => dir.length > 0 && isFullyQualifiedAbsolutePath(dir, isWindows),
+		);
+}
+
+/**
  * PATH 環境変数を走査して指定コマンドの絶対パスを返す。
  *
  * Windows の `CreateProcess` は bare command を起動する際にカレントディレクトリを
@@ -118,9 +135,7 @@ function isFullyQualifiedAbsolutePath(
 export function resolveExecutableOnPath(name: string): string | null {
 	const isWindows = globalThis.process.platform === "win32";
 	const pathModule = isWindows ? path.win32 : path.posix;
-	const pathDelimiter = isWindows ? ";" : ":";
 
-	const pathDirs = getPathEnvValue().split(pathDelimiter);
 	// PATHEXT が空文字列・空白のみ・セパレータのみ (";" や " ; ; ") の場合は
 	// 未設定と同じくデフォルトへフォールバックする。
 	// `??` だけでは空文字列を素通しし `pathExts` が空配列になり、
@@ -129,16 +144,7 @@ export function resolveExecutableOnPath(name: string): string | null {
 	// PATH 要素の外へ正規化し得るため、純粋な拡張子だけを採用する。
 	const pathExts = isWindows ? getWindowsPathExtensions() : [];
 
-	for (const rawDir of pathDirs) {
-		const dir = isWindows ? rawDir.trim() : rawDir;
-		// 完全修飾された絶対パスのみ許可する（空文字列・"."・"./"・".\\"・"bin"・".\tools"・
-		// "C:tools" や、Windows の drive-relative な "\tools" 等は全て除外）。
-		// 相対要素や drive-relative 要素を許すと `spawn(..., { cwd: workspaceRoot })` と
-		// 合わさって repo 配下や別ドライブのバイナリが起動する余地を残すため、ここで完全に弾く。
-		if (!dir || !isFullyQualifiedAbsolutePath(dir, isWindows)) {
-			continue;
-		}
-
+	for (const dir of getSafePathDirectories(isWindows)) {
 		if (!isWindows) {
 			const candidate = pathModule.join(dir, name);
 			if (isExecutableFile(candidate)) {
@@ -185,7 +191,6 @@ export function resolveNativeExecutableOnPath(name: string): string | null {
 		return resolveExecutableOnPath(name);
 	}
 
-	const pathDirs = getPathEnvValue().split(";");
 	const directExtension = path.win32.extname(name);
 	if (
 		directExtension &&
@@ -198,13 +203,7 @@ export function resolveNativeExecutableOnPath(name: string): string | null {
 		? [name]
 		: [`${name}.EXE`, `${name}.COM`];
 
-	for (const rawDir of pathDirs) {
-		const dir = rawDir.trim();
-		// drive-relative な "\tools" 等は current drive 依存で fully-qualified ではないため除外する。
-		if (!dir || !isFullyQualifiedAbsolutePath(dir, true)) {
-			continue;
-		}
-
+	for (const dir of getSafePathDirectories(true)) {
 		for (const candidateName of candidateNames) {
 			const candidate = path.win32.join(dir, candidateName);
 			if (isRegularFile(candidate)) {

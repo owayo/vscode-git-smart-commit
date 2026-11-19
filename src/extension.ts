@@ -1,7 +1,37 @@
 import * as vscode from "vscode";
 import { rewordCommit } from "./commands/rewordCommit";
-import { runGitSc } from "./commands/runGitSc";
+import { type GitScOptions, runGitSc } from "./commands/runGitSc";
 import { terminateActiveGitScProcesses } from "./commands/spawnGitScProcess";
+
+/**
+ * commit フローのコマンド ID と、git-sc へ渡すオプションの対応。
+ * package.json の contributes.commands と同じ順に並べる。
+ */
+const COMMIT_COMMANDS: readonly {
+	readonly id: string;
+	readonly options: Readonly<GitScOptions>;
+}[] = [
+	// ステージ全件 + 自動確定 (-a -y)
+	{
+		id: "git-smart-commit.runAddAutoConfirm",
+		options: { stageAll: true, autoConfirm: true },
+	},
+	// ステージ全件 + 本文付き + 自動確定 (-a -b -y)
+	{
+		id: "git-smart-commit.runAddBodyAutoConfirm",
+		options: { stageAll: true, includeBody: true, autoConfirm: true },
+	},
+	// 自動確定のみ (-y)
+	{
+		id: "git-smart-commit.runAutoConfirm",
+		options: { autoConfirm: true },
+	},
+	// 本文付き + 自動確定 (-b -y)
+	{
+		id: "git-smart-commit.runBodyAutoConfirm",
+		options: { includeBody: true, autoConfirm: true },
+	},
+];
 
 let statusBarItem: vscode.StatusBarItem | undefined;
 let outputChannel: vscode.OutputChannel;
@@ -9,93 +39,34 @@ let outputChannel: vscode.OutputChannel;
 export function activate(context: vscode.ExtensionContext): void {
 	outputChannel = vscode.window.createOutputChannel("Git Smart Commit");
 
-	// コマンドを登録
-	// ステージ全件 + 自動確定 (-a -y)
-	const runAddAutoConfirmCommand = vscode.commands.registerCommand(
-		"git-smart-commit.runAddAutoConfirm",
-		async (sourceControl?: vscode.SourceControl) => {
-			try {
-				await runGitSc(
-					outputChannel,
-					{ stageAll: true, autoConfirm: true },
-					sourceControl?.rootUri,
-				);
-			} catch {
-				// runGitSc 側でエラー表示済み
-			}
-		},
-	);
-
-	// ステージ全件 + 本文付き + 自動確定 (-a -b -y)
-	const runAddBodyAutoConfirmCommand = vscode.commands.registerCommand(
-		"git-smart-commit.runAddBodyAutoConfirm",
-		async (sourceControl?: vscode.SourceControl) => {
-			try {
-				await runGitSc(
-					outputChannel,
-					{
-						stageAll: true,
-						includeBody: true,
-						autoConfirm: true,
-					},
-					sourceControl?.rootUri,
-				);
-			} catch {
-				// runGitSc 側でエラー表示済み
-			}
-		},
-	);
-
-	// 自動確定のみ (-y)
-	const runAutoConfirmCommand = vscode.commands.registerCommand(
-		"git-smart-commit.runAutoConfirm",
-		async (sourceControl?: vscode.SourceControl) => {
-			try {
-				await runGitSc(
-					outputChannel,
-					{ autoConfirm: true },
-					sourceControl?.rootUri,
-				);
-			} catch {
-				// runGitSc 側でエラー表示済み
-			}
-		},
-	);
-
-	// 本文付き + 自動確定 (-b -y)
-	const runBodyAutoConfirmCommand = vscode.commands.registerCommand(
-		"git-smart-commit.runBodyAutoConfirm",
-		async (sourceControl?: vscode.SourceControl) => {
-			try {
-				await runGitSc(
-					outputChannel,
-					{ includeBody: true, autoConfirm: true },
-					sourceControl?.rootUri,
-				);
-			} catch {
-				// runGitSc 側でエラー表示済み
-			}
-		},
-	);
+	// コマンドを登録する。SCM のメニューから呼ばれた場合は、選ばれたリポジトリを対象にする
+	for (const { id, options } of COMMIT_COMMANDS) {
+		context.subscriptions.push(
+			vscode.commands.registerCommand(
+				id,
+				async (sourceControl?: vscode.SourceControl) => {
+					try {
+						await runGitSc(outputChannel, options, sourceControl?.rootUri);
+					} catch {
+						// runGitSc 側でエラー表示済み
+					}
+				},
+			),
+		);
+	}
 
 	// コミット文面の修正（QuickPick で対象を選択）
-	const rewordCommand = vscode.commands.registerCommand(
-		"git-smart-commit.reword",
-		async (sourceControl?: vscode.SourceControl) => {
-			try {
-				await rewordCommit(outputChannel, sourceControl?.rootUri);
-			} catch {
-				// rewordCommit 側でエラー表示済み
-			}
-		},
-	);
-
 	context.subscriptions.push(
-		runAddAutoConfirmCommand,
-		runAddBodyAutoConfirmCommand,
-		runAutoConfirmCommand,
-		runBodyAutoConfirmCommand,
-		rewordCommand,
+		vscode.commands.registerCommand(
+			"git-smart-commit.reword",
+			async (sourceControl?: vscode.SourceControl) => {
+				try {
+					await rewordCommit(outputChannel, sourceControl?.rootUri);
+				} catch {
+					// rewordCommit 側でエラー表示済み
+				}
+			},
+		),
 	);
 
 	// ステータスバー項目を作成
