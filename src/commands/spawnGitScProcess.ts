@@ -222,14 +222,39 @@ export async function spawnGitScWithProgress({
 					return;
 				}
 				const isPosix = globalThis.process.platform !== "win32";
-				const process = spawn(resolved.command, resolved.args, {
-					cwd: workspaceRoot,
-					shell: false,
-					detached: isPosix,
-					windowsVerbatimArguments: resolved.windowsVerbatimArguments,
-					env: { ...globalThis.process.env, FORCE_COLOR: "0" },
-					windowsHide: true,
-				});
+				// git-sc の起動失敗を通知する。ENOENT は未導入として案内する。
+				const reportStartFailure = (err: Error): void => {
+					outputChannel.appendLine(
+						`\n❌ Failed to start git-sc: ${err.message}`,
+					);
+
+					if (err.message.includes("ENOENT")) {
+						showGitScNotFoundMessage(outputChannel);
+					} else {
+						vscode.window.showErrorMessage(
+							`Failed to run git-sc: ${err.message}`,
+						);
+					}
+				};
+				let process: ChildProcess;
+				try {
+					process = spawn(resolved.command, resolved.args, {
+						cwd: workspaceRoot,
+						shell: false,
+						detached: isPosix,
+						windowsVerbatimArguments: resolved.windowsVerbatimArguments,
+						env: { ...globalThis.process.env, FORCE_COLOR: "0" },
+						windowsHide: true,
+					});
+				} catch (error) {
+					// EINVAL や Windows の EFTYPE など一部の起動失敗は、error イベントではなく
+					// spawn の同期例外になる。呼び出し元のコマンドは例外を通知済みとして
+					// 握りつぶすため、ここで error イベントと同じく通知してから reject する。
+					const err = error instanceof Error ? error : new Error(String(error));
+					reportStartFailure(err);
+					rejectOnce(err);
+					return;
+				}
 				const forceShutdownTerminate = (): void => {
 					if (settled) {
 						return;
@@ -335,23 +360,9 @@ export async function spawnGitScWithProgress({
 				let stdout = "";
 				let stderr = "";
 
-				// UTF-8 の複数バイト文字がチャンク境界で分割されても、StringDecoder に
-				// 境界を保持させて U+FFFD への置換による文字化けを防ぐ。
-				process.stdout.setEncoding("utf8");
-				process.stderr.setEncoding("utf8");
-
-				process.stdout.on("data", (data: string | Buffer) => {
-					const text = typeof data === "string" ? data : data.toString("utf8");
-					stdout += text;
-					outputChannel.append(text);
-				});
-
-				process.stderr.on("data", (data: string | Buffer) => {
-					const text = typeof data === "string" ? data : data.toString("utf8");
-					stderr += text;
-					outputChannel.append(text);
-				});
-
+				// 終了イベントは標準入出力の設定より先に登録する。EMFILE / ENFILE で起動に
+				// 失敗すると Node.js は stdout / stderr を作らずに次の tick で error を発火するため、
+				// 先に null の stdout を参照すると例外で登録まで届かず、error が未処理になる。
 				process.on("close", (code: number | null) => {
 					// プロセス終了が確定したので後始末対象から除去する
 					activeGitScProcesses.delete(process);
@@ -424,18 +435,26 @@ export async function spawnGitScWithProgress({
 						return;
 					}
 
-					outputChannel.appendLine(
-						`\n❌ Failed to start git-sc: ${err.message}`,
-					);
-
-					if (err.message.includes("ENOENT")) {
-						showGitScNotFoundMessage(outputChannel);
-					} else {
-						vscode.window.showErrorMessage(
-							`Failed to run git-sc: ${err.message}`,
-						);
-					}
+					reportStartFailure(err);
 					rejectOnce(err);
+				});
+
+				// UTF-8 の複数バイト文字がチャンク境界で分割されても、StringDecoder に
+				// 境界を保持させて U+FFFD への置換による文字化けを防ぐ。
+				// 起動に失敗したプロセスでは stdout / stderr が null になる。
+				process.stdout?.setEncoding("utf8");
+				process.stderr?.setEncoding("utf8");
+
+				process.stdout?.on("data", (data: string | Buffer) => {
+					const text = typeof data === "string" ? data : data.toString("utf8");
+					stdout += text;
+					outputChannel.append(text);
+				});
+
+				process.stderr?.on("data", (data: string | Buffer) => {
+					const text = typeof data === "string" ? data : data.toString("utf8");
+					stderr += text;
+					outputChannel.append(text);
 				});
 
 				token.onCancellationRequested(() => {

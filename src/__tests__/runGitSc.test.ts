@@ -686,6 +686,71 @@ describe("runGitSc", () => {
 		);
 	});
 
+	it("should notify a synchronous spawn exception instead of swallowing it", async () => {
+		// EINVAL や Windows の EFTYPE は error イベントではなく spawn の同期例外になる。
+		// コマンドのハンドラは reject を通知済みとして握りつぶすため、ここで通知されないと何も表示されない。
+		mockSpawn.mockImplementation(() => {
+			throw new Error("spawn EFTYPE");
+		});
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		await expect(promise).rejects.toThrow("spawn EFTYPE");
+		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
+			"\n❌ Failed to start git-sc: spawn EFTYPE",
+		);
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"Failed to run git-sc: spawn EFTYPE",
+		);
+	});
+
+	it("should stringify a non-Error synchronous spawn exception", async () => {
+		mockSpawn.mockImplementation(() => {
+			throw "spawn failed";
+		});
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+
+		// 通知が [object Object] にならず、Error に包み直して reject する
+		await expect(promise).rejects.toThrow("spawn failed");
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"Failed to run git-sc: spawn failed",
+		);
+	});
+
+	it("should report EMFILE spawn failures that have no standard streams", async () => {
+		// EMFILE / ENFILE では Node.js が stdout / stderr を作らないまま error と close を発火する
+		const proc = createMockProcess();
+		proc.stdout = null;
+		proc.stderr = null;
+		mockSpawn.mockReturnValue(proc);
+
+		const promise = runGitSc(mockOutputChannel as never, {
+			autoConfirm: true,
+		});
+		setTimeout(() => {
+			proc.__emit("error", new Error("spawn /usr/local/bin/git-sc EMFILE"));
+			proc.__emit("close", null);
+		}, 10);
+
+		await expect(promise).rejects.toThrow("EMFILE");
+		expect(mockShowErrorMessage).toHaveBeenCalledTimes(1);
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"Failed to run git-sc: spawn /usr/local/bin/git-sc EMFILE",
+		);
+		// 起動に失敗したプロセスを停止時の後始末対象に残さない
+		const { terminateActiveGitScProcesses } = await import(
+			"../commands/spawnGitScProcess"
+		);
+		mockOutputChannel.appendLine.mockClear();
+		terminateActiveGitScProcesses(mockOutputChannel as never);
+		expect(mockOutputChannel.appendLine).not.toHaveBeenCalled();
+	});
+
 	it("should set FORCE_COLOR=0 in process env", async () => {
 		const proc = createMockProcess();
 		mockSpawn.mockReturnValue(proc);
