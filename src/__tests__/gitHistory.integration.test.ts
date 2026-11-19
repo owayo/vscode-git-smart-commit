@@ -122,11 +122,85 @@ describe("実際の Git による履歴とワークスペース検出", () => {
 
 		const commits = getRecentCommits(signed);
 		expect(commits).toHaveLength(1);
-		expect(commits[0]?.hash).toBe(
+		expect(commits[0]?.hash).toBe(git(signed, ["rev-parse", "HEAD"]).trim());
+		expect(commits[0]?.shortHash).toBe(
 			git(signed, ["rev-parse", "--short", "HEAD"]).trim(),
 		);
 		expect(commits[0]?.message).toBe("signed subject");
 		expect(commits[0]?.author).toBe("Test Author");
+	});
+
+	it("短縮ハッシュと同名のタグがあっても、選んだコミットに解決できるハッシュを返す", () => {
+		const ambiguous = join(root, "ambiguous");
+		mkdirSync(ambiguous);
+		git(ambiguous, ["init", "-b", "main"]);
+		for (const message of ["target", "other"]) {
+			git(ambiguous, [
+				"-c",
+				"commit.gpgsign=false",
+				"commit",
+				"--allow-empty",
+				"-m",
+				message,
+			]);
+		}
+		const target = git(ambiguous, ["rev-parse", "HEAD~1"]).trim();
+		const other = git(ambiguous, ["rev-parse", "HEAD"]).trim();
+		const targetShortHash = git(ambiguous, [
+			"rev-parse",
+			"--short",
+			"HEAD~1",
+		]).trim();
+		// target の短縮ハッシュと同じ名前のタグを other に付ける。
+		// git rev-parse は短縮ハッシュより ref 名を先に解決するため、短縮形では other になる。
+		git(ambiguous, ["tag", targetShortHash, other]);
+		expect(
+			git(ambiguous, [
+				"rev-parse",
+				"--verify",
+				"--quiet",
+				`${targetShortHash}^{commit}`,
+			]).trim(),
+		).toBe(other);
+
+		const selected = getRecentCommits(ambiguous).find(
+			(commit) => commit.message === "target",
+		);
+
+		expect(selected?.hash).toBe(target);
+		// git-sc --reword と同じ解決方法で、選んだコミット自体に解決されること
+		expect(
+			git(ambiguous, [
+				"rev-parse",
+				"--verify",
+				"--quiet",
+				"--end-of-options",
+				`${selected?.hash}^{commit}`,
+			]).trim(),
+		).toBe(target);
+	});
+
+	it("i18n.logOutputEncoding が UTF-8 以外でも件名と作者名を文字化けさせない", () => {
+		const encoded = join(root, "encoded");
+		mkdirSync(encoded);
+		git(encoded, ["init", "-b", "main"]);
+		git(encoded, [
+			"-c",
+			"commit.gpgsign=false",
+			"commit",
+			"--allow-empty",
+			"-m",
+			"日本語の件名",
+			"--author",
+			"山田 <you@example.com>",
+		]);
+		git(encoded, ["config", "i18n.logOutputEncoding", "Shift_JIS"]);
+
+		const commits = getRecentCommits(encoded);
+
+		expect(commits).toHaveLength(1);
+		expect(commits[0]?.message).toBe("日本語の件名");
+		expect(commits[0]?.author).toBe("山田");
 	});
 
 	it("orphan HEAD に他の ref の履歴があれば元の git log エラーを保持する", () => {

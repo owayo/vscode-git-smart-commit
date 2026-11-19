@@ -9,7 +9,13 @@ import { spawnGitScWithProgress } from "./spawnGitScProcess";
 
 export interface CommitInfo {
 	index: number;
+	/**
+	 * git-sc --reword に渡す完全なコミットハッシュ。短縮ハッシュは同名のタグやブランチが
+	 * あると `git rev-parse` でそちらに解決され、選んだものとは別のコミットを書き換える。
+	 */
 	hash: string;
+	/** 一覧や進捗に表示する短縮ハッシュ (git log の %h) */
+	shortHash: string;
 	message: string;
 	date: string;
 	author: string;
@@ -53,7 +59,11 @@ export function getRecentCommits(
 				"log",
 				// log.showSignature の検証結果がハッシュ欄へ混入するのを防ぐ。
 				"--no-show-signature",
-				"--format=format:%h%x00%s%x00%cr%x00%an%x00",
+				// i18n.logOutputEncoding (例: Shift_JIS) の設定に関わらず UTF-8 で出力させる。
+				// 指定しないと件名や作者名を UTF-8 として読んだときに文字化けする。
+				"--encoding=UTF-8",
+				// 実行用の完全なハッシュと表示用の短縮ハッシュを別々に受け取る。
+				"--format=format:%H%x00%h%x00%s%x00%cr%x00%an%x00",
 				"-n",
 				String(safeLimit),
 			],
@@ -73,20 +83,22 @@ export function getRecentCommits(
 
 	for (
 		let index = 0, fieldIndex = 0;
-		fieldIndex + 3 < fields.length;
+		fieldIndex + 4 < fields.length;
 		index += 1
 	) {
 		// format: はコミット間に改行セパレータを挿入するため、
 		// 2番目以降のハッシュ先頭に改行が混入する → 先頭の改行のみ除去
 		const hash = (fields[fieldIndex] ?? "").replace(/^\n/, "");
-		const message = fields[fieldIndex + 1] ?? "";
-		const date = fields[fieldIndex + 2] ?? "";
-		const author = fields[fieldIndex + 3] ?? "";
-		fieldIndex += 4;
+		const shortHash = fields[fieldIndex + 1] ?? "";
+		const message = fields[fieldIndex + 2] ?? "";
+		const date = fields[fieldIndex + 3] ?? "";
+		const author = fields[fieldIndex + 4] ?? "";
+		fieldIndex += 5;
 
 		commits.push({
 			index: index + 1, // git-sc --reword 向けの 1 始まりインデックス
 			hash,
+			shortHash,
 			message,
 			date,
 			author,
@@ -127,7 +139,7 @@ export async function rewordCommit(
 	const items: Array<vscode.QuickPickItem & { commit: CommitInfo }> =
 		commits.map((commit) => ({
 			label: `$(git-commit) ${commit.message}`,
-			description: `${commit.hash} • ${commit.date}`,
+			description: `${commit.shortHash} • ${commit.date}`,
 			detail: `${commit.index - 1} commit(s) ago • by ${commit.author}`,
 			commit,
 		}));
@@ -156,23 +168,23 @@ export async function rewordCommit(
 		return;
 	}
 
-	// 選択したコミットハッシュで git-sc --reword を実行
-	await runGitScReword(outputChannel, workspaceRoot, commit.hash);
+	// 選択したコミットの完全なハッシュで git-sc --reword を実行
+	await runGitScReword(outputChannel, workspaceRoot, commit);
 }
 
 async function runGitScReword(
 	outputChannel: vscode.OutputChannel,
 	workspaceRoot: string,
-	hash: string,
+	commit: CommitInfo,
 ): Promise<void> {
 	// spawn / 進捗表示 / キャンセル処理は commit フローと共通のヘルパーに委譲し、
 	// reword フロー固有の引数と表示文言だけを渡す。
 	return spawnGitScWithProgress({
 		outputChannel,
 		workspaceRoot,
-		args: ["--reword", hash, "-y"],
+		args: ["--reword", commit.hash, "-y"],
 		messages: {
-			progressMessage: `Rewording commit ${hash}...`,
+			progressMessage: `Rewording commit ${commit.shortHash}...`,
 			successOutputLine: "✅ Reword completed successfully",
 			successNotification: "Commit reworded successfully!",
 			failureOutputPrefix: "Reword failed",
