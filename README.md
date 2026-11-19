@@ -49,9 +49,10 @@
 - **複数ルートワークスペース対応** — 開いているフォルダー群から Git 管理下のワークスペースルートを自動で選択
 - **実行時環境変数を反映** — Git ルート検出時にその時点の `PATH` など最新の環境変数を使い、古い環境状態を保持しない。`git rev-parse --show-toplevel` の末尾改行だけを除去し、実在するリポジトリパス末尾の空白は保持する
 - **キャンセル時の安定動作** — 実行キャンセル時に不要な失敗通知を表示しない。POSIX では `detached: true` で `git-sc` をプロセスグループのリーダーとして起動し、`process.kill(-pid, "SIGTERM")` でグループ全体に SIGTERM を送ることで `git-sc` が起動した `git` 等の孫プロセスもまとめて終了させる (グループ kill 失敗時は単体 PID にフォールバック)。SIGTERM を無視するプロセスに備え、5 秒経過しても `close` が来ない場合は SIGKILL に昇格してプロセスグループを強制終了する。Windows では `SystemRoot\\System32\\taskkill.exe` または安全に解決した native `taskkill` を絶対パスで起動し、`/T /F` でプロセスツリー全体を終了させる (`taskkill /F` 自体が強制終了相当のため、Windows 側に追加の SIGKILL 昇格は不要)。さらにキャンセル時はプロセスの `close` イベントを待ち、POSIX では加えてプロセスグループ全体の消滅を `kill(-pid, 0)` の 50ms ポーリングで確認してから完了扱いにする。`close` は直接の子と stdio の終了しか保証しないため、SIGTERM を無視する孫プロセスが残っている場合でもポーリング中は SIGKILL 昇格タイマーが生き続けて確実に強制終了でき、終了未確定のまま VS Code に成功通知が出て裏でバックグラウンド処理が続く心配がない (SIGKILL でも消えない異常系は上限 10 秒で警告を記録して完了扱いにし、進捗表示が永久に残らないようにする)。`kill(-pid, 0)` が非 `Error` 値を投げても消滅と誤認せず待機を継続し、`error` と `close` が連続してもポーリングを二重開始しない。`close` / `error` で成功・失敗が確定した後にキャンセル通知が遅れて到着するレースでも、終了済みプロセスに再 kill や SIGKILL タイマーを仕掛けず、誤った「キャンセル」ログも出力しない。Windows で `taskkill` の解決・起動・終了に失敗した場合も、拡張機能を落とさず出力チャンネルへ警告を記録し、直接の子プロセスへ `SIGTERM` をフォールバック送信する。ユーザーキャンセル後かつ `close` / `error` 前に VS Code の reload / 終了 / 拡張停止 (`deactivate`) が重なった場合は、拡張ホスト終了で 5 秒後の昇格タイマーが失われないよう、POSIX は即 SIGKILL、Windows は `taskkill /T /F` の再実行へ昇格する。通常の deactivate でも、拡張ホスト終了後は昇格タイマーを実行できないため、POSIX は実行中の `git-sc` プロセスグループへ即 SIGKILL を送り、Windows は `taskkill /T /F` でプロセスツリーを強制終了して子孫プロセスの孤児化を防ぐ
-- **履歴解析の堅牢化** — `Reword Commit` で `|`、`\x1f`、`\x1e` を含む件名も NUL 区切り解析で正しく扱える。`format:` プレフィックスと改行セパレータ除去により、複数コミット間のハッシュ汚染を防止
+- **履歴解析の堅牢化** — `Reword Commit` で `|`、`\x1f`、`\x1e` を含む件名も NUL 区切り解析で正しく扱える。`format:` プレフィックスと改行セパレータ除去により、複数コミット間のハッシュ汚染を防止。`git-sc --reword` には完全なコミットハッシュを渡すため、短縮ハッシュと同じ名前のタグやブランチがあっても、一覧で選んだコミットを書き換える (一覧の表示は短縮ハッシュ)。`i18n.logOutputEncoding` を `Shift_JIS` などにしていても、件名と作者名は UTF-8 で読み込み、文字化けしない
+- **拡張ホストを止めない Git 呼び出し** — リポジトリの検出と履歴の読み込みは Git を非同期に実行する。Git 管理外のフォルダーが多いマルチルートや、応答の遅いファイルシステムでも、ほかの拡張の処理を待たせない
 - **履歴状態に応じた案内** — 空リポジトリでは「コミットなし」を警告表示し、`git` 未導入や不正な作業ツリーでは原因を明示して通知
-- **未導入検知の強化** — Windows の `is not recognized` を含むエラーでもインストール案内を表示し、そのまま GitHub の導入手順を開ける。未検出判定は `git-sc` の前後に単語文字・ハイフンが続かないことを要求して照合するため、`my-git-sc` や `git-sc-helper` のような別コマンド名の未検出を git-sc 自身の未検出と取り違えない。導入手順 URL のオープンが失敗しても (Promise の reject、および VS Code が「オープン失敗」を示す `false` を返した場合のいずれも)、未処理 Promise rejection にせず出力チャンネルに警告を記録する。さらに POSIX で `spawn` が `ENOENT` になった際に Node.js が `error` と `close` を連続発火しても、インストール案内ダイアログや失敗通知が重複しないように `settled` フラグで抑止する
+- **未導入検知の強化** — Windows の `is not recognized` を含むエラーでもインストール案内を表示し、そのまま GitHub の導入手順を開ける。未検出判定は `git-sc` の前後に単語文字・ハイフンが続かないことを要求して照合するため、`my-git-sc` や `git-sc-helper` のような別コマンド名の未検出を git-sc 自身の未検出と取り違えない。導入手順 URL のオープンが失敗しても (Promise の reject、および VS Code が「オープン失敗」を示す `false` を返した場合のいずれも)、未処理 Promise rejection にせず出力チャンネルに警告を記録する。さらに POSIX で `spawn` が `ENOENT` になった際に Node.js が `error` と `close` を連続発火しても、インストール案内ダイアログや失敗通知が重複しないように `settled` フラグで抑止する。`spawn` の同期例外 (EINVAL、Windows の EFTYPE など) や、ファイル記述子の枯渇 (EMFILE / ENFILE) による起動の失敗も、出力チャンネルと通知で知らせる。未導入かどうかはエラーコードで判定し、パスに `ENOENT` を含むだけの別の失敗を未導入と取り違えない
 - **実行ファイル解決の安全化** — `git-sc` は `PATH` の完全修飾された絶対パス要素のみから通常ファイルとして解決し、空要素・`.`・相対 PATH 要素 (`bin`、`.\tools` 等)・Windows の drive-relative パス (`\tools` 等。`path.win32.isAbsolute` では絶対扱いだが current drive 依存) や同名ディレクトリを完全に除外する。Windows の `CreateProcess` がカレントディレクトリを探索パスに含める挙動に加え、POSIX でも `PATH` に空要素や `.` が含まれる場合に悪意あるリポジトリ直下の `git-sc` を拾うリスクを防ぐ。Windows の `PATHEXT` は `.EXE` のような純粋な拡張子だけを採用し、パス区切りやドライブ区切りを含む壊れた要素は探索候補から除外して、候補パスが `PATH` 要素の外側へ正規化されるのを防ぐ。Windows の `.cmd`/`.bat` は `shell: true` ではなく `SystemRoot\\System32\\cmd.exe` を絶対パスで解決し、`windowsVerbatimArguments: true` + CommandLineToArgvW 互換の自前 quote で起動することで、Node.js DEP0190 (`shell: true` + `args` の unsafe な空白連結) と空白入り PATH / cmd.exe メタ文字を含む引数による shell injection の双方を回避する。さらに cmd.exe が二重引用符の内側でも `%VAR%` を展開する挙動に備え、`%` を含む引数・実行ファイルパスは拒否して誤実行を防ぐ。加えて cmd.exe は CommandLineToArgvW と異なり `\"` を `"` のエスケープとして解釈せず string トグルとして扱う (引用が途中で閉じて後続の `&` `|` `<` `>` `^` が露出する) ため、`"` を含む引数・実行ファイルパスも同様に拒否する。さらに delayed expansion が有効な環境では cmd.exe が二重引用符の内側でも `!VAR!` を環境変数展開するため、`!` を含む引数・実行ファイルパスも拒否し、加えて cmd.exe を `/v:off` で起動して遅延展開自体を無効化する (`%`/`"`/`!` のいずれも cmd.exe 上で安全にエスケープする手段が無いため拒否で統一)。同様に `git` CLI 呼び出しも安全に解決した native 実行ファイルの絶対パスを使い、作業ディレクトリは `-C <dir>` 引数で渡す。native 実行ファイル解決では `.exe`/`.com` のみを許可し、直接指定された `.cmd`/`.bat` は返さない。Windows で拡張子付きコマンド名が渡された場合も、`PATHEXT` を連結した別ファイルではなく指定名そのものだけを確認する
 - **Git 拡張連携の堅牢化** — コミット成功後の `git.refresh` 呼び出しが Git 拡張無効化等で reject しても、未処理 Promise rejection で拡張機能が落ちない。失敗は出力チャンネルに警告として記録される
 
@@ -147,7 +148,7 @@ SCM タイトルバーの ✨ (スパークル) アイコンをクリックし�
 
 ## 開発
 
-Node.js 26.13.1 と pnpm 12.20.0 を `mise.toml` で固定しています。mise を使う場合は `mise install` 後、以下のコマンドに `mise exec --` を付けて実行してください。
+Node.js 26.13.1 と pnpm 12.20.0 を `mise.toml` で固定しています。mise を使う場合は `mise install` 後、以下のコマンドに `mise exec --` を付けて実行してください。mise を使わない場合は、Corepack などで `package.json` の `packageManager` と同じ pnpm を使ってください。版が違うと、`pnpm-workspace.yaml` の `pmOnFail: error` により pnpm は別の版を取得せずに止まります。CI とリリースも `mise.toml` の版を使います。
 
 ```bash
 # リポジトリをクローン
@@ -184,11 +185,19 @@ pnpm の install script は `allowBuilds` で承認します。Biome 更新時�
 
 ユニットテストには、`extension.ts` で登録される各コマンドハンドラのオプション引き渡し、内部コマンド失敗時の例外抑止、キャンセル時の POSIX `SIGTERM` と Windows `taskkill` 分岐、`taskkill` 失敗時の `SIGTERM` フォールバック、`PATH` の空要素・相対要素・同名ディレクトリを除外する実行ファイル解決、POSIX で `PATH` 環境変数自体が未定義のときに null を返す安全側の境界、Windows の `Path` / 小文字 `path` 環境変数フォールバック、安全な native `git` 解決、直接指定された `.CMD` を native 実行ファイルとして返さない境界値、拡張子付きコマンド名へ `PATHEXT` を連結しない回帰ケース、パス区切りを含む壊れた `PATHEXT` 要素を探索候補から除外し、有効要素が無い場合はデフォルト拡張子へフォールバックする回帰ケース、`.cmd` / `.bat` 起動時に cmd.exe メタ文字を含む引数を個別 quote する回帰ケース、引数内のダブルクォート (`a"b`) と直前にバックスラッシュが付くバリエーション (`a\"b`) はいずれも cmd.exe の string トグルにより安全に escape できないため `escapeCmdArgument` で拒否する回帰ケース、末尾バックスラッシュを閉じ引用符の前で倍にして CommandLineToArgvW 互換に保つ回帰ケース、`taskkill` の絶対パス解決と `WINDIR` / 小文字 `systemroot` / 小文字 `windir` フォールバック、System32 配下の同名ディレクトリ拒否、Git ルートパス末尾の空白保持、Windows の drive-relative な PATH 要素・SystemRoot の除外と UNC パス要素の受け入れ、cmd.exe の `%VAR%` 展開を防ぐ `%` を含む引数・実行ファイルパスの拒否、`deactivate` 時に実行中の `git-sc` を終了させる回帰ケース、導入手順リンクのオープン失敗時 (Promise の reject および VS Code が返す `false` 解決) に警告ログへ落とし、`true` 解決時には警告を出さない回帰ケース、security override 全体が削除・退行しないことを確認する `pnpm-workspace.yaml` 退行ケース、`@types/vscode` と `engines.vscode` の最小バージョンがずれないことを確認する package metadata 退行ケース、インストール済み Biome の実バージョンと `biome.jsonc` の schema URL がずれないことを確認する設定退行ケース、`isCommandNotFoundError` が `my-git-sc` / `git-sc-helper` のような別コマンド名を git-sc 自身の未検出と取り違えないハイフン境界の回帰ケース、cmd.exe 経由起動で delayed expansion 対象の `!` を含む引数・実行ファイルパスを reject する回帰ケースと `/v:off` 付与の検証、`git rev-parse --show-toplevel` 出力に行終端が無い場合に Git ルートをそのまま返す防御分岐の回帰ケース、UTF-8 の複数バイト文字が stdout/stderr のチャンク境界で分割されても文字化けしない回帰ケース、キャンセル後の `close` 時にプロセスグループが残存していれば消滅確認 (SIGKILL 昇格含む) まで resolve を遅延し、SIGKILL でも消えない場合は上限時間で警告して resolve する回帰ケース、コメントアウトされた security override に照合が誤マッチしない有効行限定の退行ケース、非 Error 値が throw / reject された場合も `[object Object]` にせず文字列化して通知・記録する防御分岐の回帰ケース、失敗ログに関する回帰ケースも含まれます。
 
-今回さらに、activate 前の新規モジュールで `deactivate()` を呼んでもプロセス終了処理を誤実行しないこと、Windows で `PATH` / `Path` / `path` がすべて未定義ならファイル探索を行わず `null` を返すこと、実行中の `git-sc` が無い shutdown では警告ログを出さないことを境界テストとして固定しています。
+さらに、activate 前の新規モジュールで `deactivate()` を呼んでもプロセス終了処理を誤実行しないこと、Windows で `PATH` / `Path` / `path` がすべて未定義ならファイル探索を行わず `null` を返すこと、実行中の `git-sc` が無い shutdown では警告ログを出さないことを境界テストとして固定しています。
 
-キャンセルの状態機械には、通常の deactivate とキャンセル直後の deactivate の両方で、POSIX プロセスグループへ即 SIGKILL を送る回帰テストがあります。`error` と `close` がどちらの順序で連続しても、消滅待ちを二重に開始せず、拡張停止時の強制終了を維持します。非 `Error` 値による例外と、Windows のキャンセル後のエラーも検証しています。全338テストが成功し、v8 coverage は Statements 99.13% / Functions 100% でした。
+キャンセルの状態機械には、通常の deactivate とキャンセル直後の deactivate の両方で、POSIX プロセスグループへ即 SIGKILL を送る回帰テストがあります。`error` と `close` がどちらの順序で連続しても、消滅待ちを二重に開始せず、拡張停止時の強制終了を維持します。非 `Error` 値による例外と、Windows のキャンセル後のエラーも検証しています。
 
-署名表示 (`log.showSignature=true`) が有効でも、履歴の解析時は署名検証結果を除外して正しいコミットハッシュを取得します。今回の修正根拠、依存更新の制約、検証結果は[2026-11-12の点検記録](docs/maintenance/2026-11-12.md)を参照してください。
+署名表示 (`log.showSignature=true`) が有効でも、履歴の解析時は署名検証結果を除外して正しいコミットハッシュを取得します。当時の修正根拠、依存更新の制約、検証結果は[2026-11-12の点検記録](docs/maintenance/2026-11-12.md)を参照してください。
+
+実際の Git を使う結合テストでは、短縮ハッシュと同じ名前のタグがあっても選んだコミットに解決できるハッシュを返すことと、`i18n.logOutputEncoding=Shift_JIS` でも件名と作者名が文字化けしないことを確かめています。`spawn` の同期例外と、標準入出力の無い EMFILE の起動失敗を通知する回帰テストもあります。フォルダー名やパスに `not a git repository`・`ENOENT` を含むだけのエラーを、Git 管理外や未導入と取り違えないことも確かめています。全 355 テストが成功し、v8 coverage は Statements 99.13% / Branches 94.19% / Functions 100% でした。
+
+リポジトリの検出と履歴の読み込みが拡張ホストを止める時間は、次のスクリプトで変更前後の dist を比べて計測できます。修正の根拠、計測結果、見送った指摘は[2026-11-20の点検記録](docs/maintenance/2026-11-20.md)を参照してください。
+
+```bash
+node scripts/benchmark-command-preparation.mjs --dist before=<変更前の dist> --dist after=<変更後の dist> --runs 60
+```
 
 ### デバッグ
 
@@ -198,7 +207,16 @@ pnpm の install script は `allowBuilds` で承認します。Biome 更新時�
 
 ### リリース
 
-GitHub Actions の「Run workflow」から実行。バージョン更新・ビルド・Marketplace 公開が自動化されています。
+GitHub Actions の Release ワークフローを「Run workflow」から実行します。本番のリリースは既定のブランチ (main) からだけ実行できます。`dry_run` を選ぶと、版を計算して VSIX を作るところで止まります。
+
+ワークフローは次の順に進みます。依存の install スクリプトが、push できるトークンのあるジョブで動かないよう分けています。
+
+1. build: 依存を入れて VSIX を作る。版は `yy.m.counter` で、JST の年月から決める
+2. tag: 依存を入れずに同じ版を `package.json` に書き、コミットとタグをまとめて push する
+3. publish: VS Code Marketplace と Open VSX へ公開する
+4. github-release: VSIX を添付して GitHub Release を作る
+
+`pre_release` を選ぶと、VSIX を作る時点で pre-release の印を付け、両ストアと GitHub Release に pre-release として公開します。
 
 ## コントリビュート
 

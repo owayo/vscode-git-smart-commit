@@ -9,7 +9,8 @@ git-sc (AI によるスマートコミットメッセージ生成) を VS Code �
 - **ビルドシステム**: TypeScript compiler (`tsc`)
 - **テストフレームワーク**: Vitest (`vitest run`)
 - **Linter**: Biome (`biome.jsonc`)
-- **pnpm 設定**: `pnpm-workspace.yaml` (patched transitive dependency 用 `overrides`、承認済み install script 用 `allowBuilds`)
+- **pnpm 設定**: `pnpm-workspace.yaml` (patched transitive dependency 用 `overrides`、承認済み install script 用 `allowBuilds`、`packageManager` と実行中の pnpm が食い違ったら黙って取得せず失敗させる `pmOnFail: error`)
+- **ツールの版**: Node.js と pnpm は `mise.toml` が正。`package.json` の `packageManager` は mise を使わない開発者向けに同じ版で残し、一致は `dependencyOverrides.test.ts` で検査する。CI とリリースも `jdx/mise-action@v5` で `mise.toml` の版を入れる
 - **エントリポイント**: `src/extension.ts` -> `dist/extension.js`
 
 ## コマンド
@@ -43,8 +44,9 @@ pnpm exec vsce package --no-dependencies
 src/
   extension.ts              # 拡張機能エントリポイント (activate/deactivate)
   commands/
-    gitExecutable.ts        # Git の安全な絶対パス解決と未検出時のエラーを統一
+    gitExecutable.ts        # Git の安全な絶対パス解決・未検出時のエラー・非同期実行 (execGit)
     getGitWorkspaceRoot.ts  # 開いている workspace folders から最初の Git repository root を解決
+    resolveCommandWorkspaceRoot.ts # commit / reword 共通の Git ルート解決と、失敗時の通知
     runGitSc.ts             # commit フローのオプション組み立て + 共通 spawn ヘルパー呼び出し
     rewordCommit.ts         # Commit reword UI + git log parsing + 共通 spawn ヘルパー呼び出し
     spawnGitScProcess.ts    # commit / reword 共通の git-sc spawn + 進捗 + キャンセル状態機械
@@ -65,17 +67,20 @@ src/
 
 ### 主要パターン
 
-- Commands は `activate()` で登録し、`context.subscriptions` に追加する
+- Commands は `activate()` で登録し、`context.subscriptions` に追加する。commit 系の 4 コマンドは `extension.ts` の `COMMIT_COMMANDS` (コマンド ID と git-sc のオプションの表) から登録し、SCM メニューから渡された `SourceControl.rootUri` を対象として渡す
 - `git-sc` の spawn / `withProgress` 進捗表示 / キャンセル状態機械は commit フロー (`runGitSc`) と reword フロー (`runGitScReword`) で完全に同一のため、`spawnGitScProcess.ts` の `spawnGitScWithProgress({ outputChannel, workspaceRoot, args, messages })` に集約している。呼び出し側は引数とフロー固有の表示文言 (`messages`) だけを渡す。`showGitScNotFoundMessage` / `GIT_SC_INSTALLATION_URL` もこのヘルパー内に定義する。
 - External process execution uses `child_process.spawn` with **`shell: false` を全 platform で固定**。`git-sc` は `resolveSpawnCommand(name, args)` で絶対パスに解決した上で起動する。PATH 走査は完全修飾された絶対パス要素 (Windows は drive-qualified `C:\` / UNC `\\` のみ。`\foo` のような drive-relative パスは current drive 依存のため除外) だけを許容し、空要素・`.`・相対パスも全て除外することで cwd ハイジャック (悪意ある repo 直下や別ドライブの `git-sc` / `git-sc.cmd` 優先実行) を防ぐ。Windows の `PATHEXT` は `.EXE` のような純粋な拡張子だけを採用し、パス区切りやドライブ区切りを含む壊れた要素は探索候補から除外することで、`path.win32.join` の正規化により候補パスが PATH 要素の外へずれるのを防ぐ。
   - **POSIX**: `detached: true` で起動し子プロセスがプロセスグループのリーダーになる。キャンセル時は `process.kill(-pid, "SIGTERM")` でプロセスグループ全体へ送信し、`git-sc` が起動した `git` 等の孫プロセスもまとめて終了させる。`process.kill(-pid)` が失敗した場合は直接の子プロセスへ `SIGTERM` をフォールバック送信する。SIGTERM を `trap "" TERM` 等で無視するプロセスに備え、5 秒経過しても `close` が来ない場合は SIGKILL に昇格してプロセスグループを強制終了する。`forceKillTimer` は resolve/reject が確定した時点でクリアして余計な SIGKILL を送らない。キャンセル中の `close` ではプロセスグループ消滅を確認してから resolve するため、SIGTERM を無視する孫プロセスが残っている間は SIGKILL 昇格タイマーが生き続ける。
   - **Windows `.exe` 等**: 絶対パスを `shell: false` で直接起動する。
   - **Windows `.cmd` / `.bat`**: CreateProcess で直接起動できないため、`SystemRoot\System32\cmd.exe` を絶対パスで解決し、各引数を CommandLineToArgvW 互換で自前 quote した上で `["/d", "/s", "/c", "\"resolved\" \"arg1\" ..."]` を `windowsVerbatimArguments: true` で渡す。これにより Node.js DEP0190 (`shell: true` + `args` の unsafe な空白連結による shell injection) と、空白入りパス / cmd.exe メタ文字を含む引数による injection の双方を回避する。なお cmd.exe は二重引用符の内側でも `%VAR%` を環境変数展開し `%` を確実にエスケープする手段がないため、`%` を含む引数・実行ファイルパスは `escapeCmdArgument` で拒否して誤実行を防ぐ。また cmd.exe は CommandLineToArgvW と異なり `\"` を `"` のエスケープとして解釈せず string トグルとして扱い、引用が途中で閉じて後続の `&` `|` `<` `>` `^` が露出するため、`"` を含む引数・実行ファイルパスも `escapeCmdArgument` で拒否する。キャンセル時は `SystemRoot\System32\taskkill.exe` または安全に解決した native `taskkill` を絶対パスで起動し、`/PID <pid> /T /F` でプロセスツリーごと終了させる。`taskkill` の解決・起動・終了に失敗した場合は直接の子プロセスへ `SIGTERM` をフォールバック送信する。
   - PATH 上に安全な絶対パスが見つからない場合・Windows で cmd.exe を解決できない場合は、フォールバック spawn せずインストール案内へ誘導する。
+  - PATH の安全な要素の選別 (完全修飾の絶対パスだけを残す) は `getSafePathDirectories` に集約し、`resolveExecutableOnPath` と `resolveNativeExecutableOnPath` の両方がこれを使う。
+  - `spawn` の同期例外 (EINVAL、Windows の EFTYPE など) も `error` イベントと同じく通知してから reject する。コマンドのハンドラは reject を通知済みとして握りつぶすため。`close` / `error` のリスナーは stdout / stderr の設定より前に登録し、stdio は `?.` で扱う。EMFILE / ENFILE では Node.js が stdio を作らずに `error` を発火するため。未導入の判定は、エラーコードがあれば `code === "ENOENT"`、無ければメッセージで行う (メッセージには実行ファイルのパスが入る)。
 - Cancellation はキャンセルハンドラ内で `resolveOnce()` を呼ばず、`close` イベントでプロセスの終了を確認してから resolve する。さらに POSIX では `close` は「直接の子と stdio の終了」しか保証せず、stdio を継承しない孫プロセスが SIGTERM を無視して生き残るケースがあるため、`kill(-pid, 0)` の 50ms ポーリング (`waitForPosixProcessGroupExit`) でプロセスグループ全体の消滅を確認してから resolve する。ポーリング中は settled にならないため 5 秒後の SIGKILL 昇格タイマーが機能して残存プロセスを強制終了できる。SIGKILL でも消えない異常系 (uninterruptible sleep 等) は上限 10 秒で警告を出して resolve し、進捗表示が永久に残るのを防ぐ (ESRCH のみ消滅扱い、EPERM と非 `Error` throw は存続扱い)。キャンセル後に kill 失敗等で `error` が発火した経路も `close` と同じ消滅確認へ合流させる (spawn 失敗時は pid 未定義のため即 resolve に合流)。`error` と `close` が連続しても消滅待ちポーリングは 1 回だけ開始する。ポーリング開始時は「残存グループを即 SIGKILL する」shutdown ハンドラを active map へ再登録し、ポーリング中に VS Code の reload / deactivate が来ても残存グループを取りこぼさない (`close`/`error` 冒頭の map 削除だけだと deactivate 時に何も送れず孫が孤児化する)。さらにユーザーキャンセル後かつ `close` / `error` 前に deactivate が重なる区間でも、元の active map ハンドラが POSIX は SIGKILL、Windows は `taskkill /T /F` の再実行へ昇格する。これにより、キャンセル直後に終了未確定のまま VS Code 上で成功扱いになったり、拡張ホスト終了で昇格タイマーを失って `git-sc` の子孫プロセスが裏で走り続けたりする事象を防ぐ。
 - 実行中の `git-sc` 子プロセスは `spawnGitScProcess.ts` の module-level `Map<ChildProcess, () => void>` で「プロセス → 終了ハンドラ」を追跡し (spawn 後に登録、`close`/`error` で delete)、拡張機能の `deactivate()` から `terminateActiveGitScProcesses(outputChannel)` を呼んで一括終了する。これにより VS Code の reload / 終了 / 拡張停止時に、POSIX で `detached` 起動した `git-sc` とその子孫が孤児として残らないようにする。拡張ホスト終了後は SIGKILL 昇格タイマーを実行できないため、shutdown ハンドラは `isCancelled` を立てた上で POSIX のプロセスグループへ即 SIGKILL を送り、Windows では `taskkill /T /F` でプロセスツリーを強制終了する。これにより通常の deactivate とユーザーキャンセル直後の deactivate の双方で SIGTERM 無視プロセスを取り残さず、拡張停止に伴う `close` も「キャンセル」扱いにして誤った成功/失敗通知や `git.refresh` を出さない。
-- Git CLI 呼び出しは `resolveNativeExecutableOnPath("git")` で `.exe`/`.com` 等の native 実行ファイルを絶対パスに解決してから `execFileSync(<gitPath>, ["-C", <dir>, ...])` で実行する。bare command と `cwd: <dir>` を使わないことで、Windows の `CreateProcess` がカレントディレクトリを実行ファイル探索パスに含める cwd ハイジャックを回避する。`git rev-parse --show-toplevel` の出力は Git が付与する末尾改行だけを除去し、実在するリポジトリパス末尾の空白は保持する。
-- Commands は `git-sc` / `git log` を実行する前に、開いている workspace folders から最初に到達可能な Git repository root を解決する
+- Git CLI 呼び出しは `resolveNativeExecutableOnPath("git")` で `.exe`/`.com` 等の native 実行ファイルを絶対パスに解決してから、`gitExecutable.ts` の `execGit(<gitPath>, ["-C", <dir>, ...])` (`child_process.execFile` のラッパー) で非同期に実行する。`execFileSync` は Git の終了まで拡張ホストのイベントループを止め、管理外のフォルダーが並ぶマルチルートでは待ちが積み上がるため使わない。失敗時のエラーは `Command failed: ...` のメッセージに stdout / stderr を付けて reject する。bare command と `cwd: <dir>` を使わないことで、Windows の `CreateProcess` がカレントディレクトリを実行ファイル探索パスに含める cwd ハイジャックを回避する。`git rev-parse --show-toplevel` の出力は Git が付与する末尾改行だけを除去し、実在するリポジトリパス末尾の空白は保持する。
+- Commands は `git-sc` / `git log` を実行する前に、`resolveCommandWorkspaceRoot` で Git repository root を解決する。SCM から対象が渡されればその対象だけを、無ければ開いている workspace folders を先頭から 1 つずつ調べる。候補の `stat` は `fs/promises` で行い、ENOENT / ENOTDIR は存在しないものとして飛ばし、それ以外のエラーは伝える。Git 管理外の判定は、エラーメッセージの行頭の `fatal: not a git repository` だけを照合する (メッセージには `git -C <フォルダー>` の行が入るため、フォルダー名の文言で所有権エラー等を管理外とみなさない)。ワークスペース未オープン・Git 未導入・その他の検出エラー・リポジトリ未検出の通知もここに集約している。Git 未導入はエラーコードがあれば `code === "ENOENT"` で判定し (`resolveGitExecutable` も同じコードを付ける)、Git の異常終了 (数値の終了コード) と区別する。
+- Reword の履歴は `git log --no-show-signature --encoding=UTF-8 --format=format:%H%x00%h%x00%s%x00%cr%x00%an%x00` で取得し、git-sc には完全なハッシュ (`%H`) を渡す。短縮ハッシュは同名のタグやブランチがあると `git rev-parse` でそちらに解決され、別のコミットを書き換えるため、表示 (`CommitInfo.shortHash`) にだけ使う。`--encoding=UTF-8` は `i18n.logOutputEncoding` が UTF-8 以外でも件名・作者名を文字化けさせないため。
 - Output is displayed via VS Code `OutputChannel`; `git-sc` の stdout/stderr は `setEncoding("utf8")` で UTF-8 ストリームとしてデコードし、日本語などの複数バイト文字がチャンク境界で分割されても `�` に置換されないようにする。
 - Progress は `vscode.window.withProgress` で表示する
 - Cancellation は process kill 後の誤った error notification を避けるようガードする
@@ -85,6 +90,7 @@ src/
 
 ## Recent Maintenance Notes
 
+- **Maintenance (2026-11-20)**: Reword が短縮ハッシュ (`%h`) を `git-sc --reword` に渡していたため、同名のタグやブランチがあると `git rev-parse` が ref を優先し、選んだものとは別のコミットを書き換える不具合を実 Git で再現して修正した (`%H` を実行用、`%h` を表示用に分離)。`i18n.logOutputEncoding` が UTF-8 以外だと件名・作者名が文字化けするため `git log` に `--encoding=UTF-8` を指定。`spawn` の同期例外を握りつぶさず通知し、EMFILE / ENFILE で stdio が null のまま `error` が来ても未処理にならないよう終了イベントの登録を stdio の設定より前へ移した。pre-release のリリースは VSIX の作成時に `--pre-release` を付ける (vsce 4.1.0 は印のない VSIX の pre-release 公開を拒否し、ovsx 1.4.0 は無視して安定版で公開していた)。エラーメッセージに入るパスの文言でエラーの種類を取り違えないよう、Git 管理外は診断の行頭 (`^fatal: not a git repository`) だけを照合し、未導入はエラーコード (`ENOENT`) で判定する (フォルダー名に文言を含むと所有権エラーを管理外とみなし、次の候補のリポジトリでコミットしていた)。Git の呼び出しとフォルダーの `stat` を非同期にし、拡張ホストを止める時間を中央値で最長 316ms から 6ms に短縮 (完了までの時間は不変)。リファクタリングとして Git ルートの解決と通知を `resolveCommandWorkspaceRoot.ts` に、commit 系コマンドの登録を表に、PATH の安全な要素の選別を `getSafePathDirectories` に集約。CI とリリースは `jdx/mise-action@v5` で `mise.toml` の版を使い、release は build (読み取りのみ) → tag (依存を入れずに push) → publish → github-release に分離、採番は JST。`pnpm-workspace.yaml` は不要になった `minimumReleaseAgeExclude` を削除し `pmOnFail: error` を追加。`@types/vscode` 1.145.0 はローカルの VS Code 1.144.0 で検証できないため見送り。計測条件・生データ・見送った指摘は `docs/maintenance/2026-11-20.md` を参照。
 - **Maintenance (2026-11-12)**: SCM の `SourceControl.rootUri` を全5コマンドから共通の Git ルート解決へ渡し、明示対象が無効なら別リポジトリへ切り替えないよう修正した。ワークスペース外の SCM 対象も扱う。履歴取得に `--no-show-signature` を付け、`log.showSignature=true` によるハッシュへの検証結果混入を修正。回帰テスト12件を追加し、全338件、Statements 99.13% / Functions 100% を確認した。Node 26.13.1 / pnpm 12.20.0、Biome 2.6.7、Vitest / coverage-v8 5.1.0、vsce 4.1.0、ovsx 1.4.0 へ更新し、API型と最低対応版はインストール検証可能な VS Code 1.144.0 に揃えた。pnpm 12 と `packageManager`・CI の固定版を同期し、Biome の対象から生成 lockfile を除外した。リリースのビルド・VSIX 作成をタグ公開前へ移動し、旧 `out/` 成果物を版管理から除外した。詳細・公開後の経過期間フィルターの扱い・性能再計測は `docs/maintenance/2026-11-12.md` を参照。
 
 - **Maintenance (2026-10-31)**: Git の絶対パス解決を `gitExecutable.ts` に集約し、未検出時の通知と最新 PATH の扱いを統一。履歴の存在確認は `hasReachableCommit` の三値判定と `rev-list --count --max-count=1 --all` に変更し、元の log エラーを保持したまま全件走査を除去した。削除済み・ファイル化した workspace 候補はスキップし、URI scheme は限定しない。キャンセル後の error/close 連続発火で shutdown 登録が消える不具合は、重複ポーリングのガードより先に登録を復元して修正。実 Git の結合テストを含む326テスト、型チェック、Lint、VSIX作成、監査0件を確認。5万コミットの判定は15回の中央値で9,085.32msから75.19msへ短縮し、CPU・RSSも減少。詳細と生データは `docs/maintenance/2026-10-31.md` を参照。Node 24.21.0 / pnpm 11.5.2 は `mise.toml` に固定し、`mise install` 後は `mise exec --` で実行する。Vitest / coverage-v8 は5.0.5、vsceは4.0.0、Biomeは2.5.15、VS Code API型とengineは1.140.0へ更新し、security overrideも更新した。
@@ -292,10 +298,13 @@ src/
 
 ## CI/CD
 
-- GitHub Actions workflow: `.github/workflows/release.yml`
-- Triggered manually via `workflow_dispatch`
-- CalVer versioning: `YY.M.COUNTER` (e.g., 25.12.110)
-- Publishes to VS Code Marketplace and Open VSX Registry
+- CI: `.github/workflows/ci.yml` (main への push と PR)。`jdx/mise-action@v5` で `mise.toml` の Node.js と pnpm を入れ、Lint・Test・Compile・VSIX 作成を行う。最上位の権限は `contents: read`
+- Release: `.github/workflows/release.yml` を `workflow_dispatch` で手動実行する。本番は既定のブランチからだけ実行でき、dry run は build だけを行う
+  - build: 依存を入れて VSIX を作る (読み取りのみ。push できるトークンを持たせない)。pre-release なら `vsce package --pre-release`
+  - tag: 依存を入れずに同じ版を `npm version --no-git-tag-version --ignore-scripts` で書き、コミットとタグを atomic に push する
+  - publish-vscode / publish-openvsx: VS Code Marketplace と Open VSX Registry へ公開する (トークンは `VSCE_PAT` / `OVSX_PAT`)
+  - github-release: VSIX を添付して GitHub Release を作る
+- CalVer versioning: `YY.M.COUNTER` (e.g., 25.12.110)。採番は JST で切る
 
 ## Development Rules
 
