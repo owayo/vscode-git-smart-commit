@@ -1,11 +1,14 @@
 import { execFile } from "child_process";
 import { resolveNativeExecutableOnPath } from "./resolveExecutablePath";
 
-/** Git の絶対パスを解決する。最新の PATH を使い、未検出時の通知用エラーを統一する。 */
+/**
+ * Git の絶対パスを解決する。最新の PATH を使い、未検出時は起動失敗と同じ
+ * `code: "ENOENT"` のエラーを投げて、呼び出し元の通知を統一する。
+ */
 export function resolveGitExecutable(): string {
 	const gitCommand = resolveNativeExecutableOnPath("git");
 	if (!gitCommand) {
-		throw new Error("spawn git ENOENT");
+		throw Object.assign(new Error("spawn git ENOENT"), { code: "ENOENT" });
 	}
 	return gitCommand;
 }

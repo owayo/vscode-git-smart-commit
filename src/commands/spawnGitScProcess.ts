@@ -223,12 +223,19 @@ export async function spawnGitScWithProgress({
 				}
 				const isPosix = globalThis.process.platform !== "win32";
 				// git-sc の起動失敗を通知する。ENOENT は未導入として案内する。
+				// Node.js の起動エラーのメッセージには実行ファイルのパスが入るため、エラーコードが
+				// あればそれで判定し、パスに "ENOENT" を含むだけの EMFILE 等を未導入と取り違えない。
 				const reportStartFailure = (err: Error): void => {
 					outputChannel.appendLine(
 						`\n❌ Failed to start git-sc: ${err.message}`,
 					);
 
-					if (err.message.includes("ENOENT")) {
+					const { code } = err as NodeJS.ErrnoException;
+					if (
+						code === undefined
+							? err.message.includes("ENOENT")
+							: code === "ENOENT"
+					) {
 						showGitScNotFoundMessage(outputChannel);
 					} else {
 						vscode.window.showErrorMessage(

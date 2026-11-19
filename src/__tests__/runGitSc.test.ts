@@ -733,15 +733,20 @@ describe("runGitSc", () => {
 		const promise = runGitSc(mockOutputChannel as never, {
 			autoConfirm: true,
 		});
+		// メッセージには実行ファイルのパスが入る。パスに ENOENT を含んでも未導入と誤診しない
+		const emfile = Object.assign(
+			new Error("spawn /opt/ENOENT/bin/git-sc EMFILE"),
+			{ code: "EMFILE" },
+		);
 		setTimeout(() => {
-			proc.__emit("error", new Error("spawn /usr/local/bin/git-sc EMFILE"));
+			proc.__emit("error", emfile);
 			proc.__emit("close", null);
 		}, 10);
 
 		await expect(promise).rejects.toThrow("EMFILE");
 		expect(mockShowErrorMessage).toHaveBeenCalledTimes(1);
 		expect(mockShowErrorMessage).toHaveBeenCalledWith(
-			"Failed to run git-sc: spawn /usr/local/bin/git-sc EMFILE",
+			"Failed to run git-sc: spawn /opt/ENOENT/bin/git-sc EMFILE",
 		);
 		// 起動に失敗したプロセスを停止時の後始末対象に残さない
 		const { terminateActiveGitScProcesses } = await import(
@@ -1177,6 +1182,41 @@ describe("runGitSc", () => {
 
 		expect(mockShowErrorMessage).toHaveBeenCalledWith(
 			"Failed to detect Git repository: fatal: unsafe repository ('/repo' is owned by someone else)",
+		);
+		expect(mockSpawn).not.toHaveBeenCalled();
+	});
+
+	it("パスに ENOENT を含むだけの Git の異常終了を Git 未導入と表示しない", async () => {
+		// Git の失敗のメッセージには `-C <フォルダー>` のパスが入る。終了コード (数値) を持つ
+		// エラーはメッセージに "ENOENT" を含んでも、起動失敗 (code: "ENOENT") とは区別する。
+		mockGetGitWorkspaceRoot.mockImplementation(() => {
+			throw Object.assign(
+				new Error(
+					"Command failed: git -C /work/ENOENT/repo rev-parse --show-toplevel",
+				),
+				{ code: 128 },
+			);
+		});
+
+		await runGitSc(mockOutputChannel as never);
+
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"Failed to detect Git repository: Command failed: git -C /work/ENOENT/repo rev-parse --show-toplevel",
+		);
+		expect(mockSpawn).not.toHaveBeenCalled();
+	});
+
+	it("起動失敗のコード ENOENT は Git 未導入として案内する", async () => {
+		mockGetGitWorkspaceRoot.mockImplementation(() => {
+			throw Object.assign(new Error("spawn /usr/bin/git ENOENT"), {
+				code: "ENOENT",
+			});
+		});
+
+		await runGitSc(mockOutputChannel as never);
+
+		expect(mockShowErrorMessage).toHaveBeenCalledWith(
+			"Git command not found. Please install Git and ensure it's in your PATH.",
 		);
 		expect(mockSpawn).not.toHaveBeenCalled();
 	});

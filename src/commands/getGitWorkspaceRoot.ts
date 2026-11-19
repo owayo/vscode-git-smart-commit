@@ -2,9 +2,18 @@ import { stat } from "node:fs/promises";
 import type * as vscode from "vscode";
 import { execGit, resolveGitExecutable } from "./gitExecutable";
 
-/** git rev-parse が「Git 管理外」として返すエラーかどうかを判定する */
+/**
+ * git rev-parse が「Git 管理外」として返すエラーかどうかを判定する。
+ *
+ * エラーメッセージには `Command failed: git -C <フォルダー> ...` の行も入るため、フォルダー名に
+ * 同じ文言を含むだけの別のエラー (所有権の拒否など) を管理外と取り違え、次の候補のリポジトリへ
+ * 進んでしまわないよう、Git の診断の行頭 (`fatal: not a git repository`) だけを照合する。
+ */
 function isNotGitRepositoryError(error: unknown): boolean {
-	return error instanceof Error && /not a git repository/i.test(error.message);
+	return (
+		error instanceof Error &&
+		/^fatal: not a git repository/im.test(error.message)
+	);
 }
 
 /** Git メッセージを英語に固定しつつ、最新の環境変数を毎回取り込む */

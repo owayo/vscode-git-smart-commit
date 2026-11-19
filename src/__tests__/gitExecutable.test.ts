@@ -31,10 +31,21 @@ describe("resolveGitExecutable", () => {
 		expect(mockResolveNativeExecutableOnPath).toHaveBeenCalledWith("git");
 	});
 
-	it("見つからなければ ENOENT のエラーを投げる", () => {
+	it("見つからなければ起動失敗と同じ ENOENT のコード付きエラーを投げる", () => {
 		mockResolveNativeExecutableOnPath.mockReturnValue(null);
 
-		expect(() => resolveGitExecutable()).toThrow("spawn git ENOENT");
+		let thrown: unknown;
+		try {
+			resolveGitExecutable();
+		} catch (error) {
+			thrown = error;
+		}
+		// 呼び出し元はメッセージではなくコードで Git 未導入を判定する
+		expect(thrown).toBeInstanceOf(Error);
+		expect(thrown).toMatchObject({
+			message: "spawn git ENOENT",
+			code: "ENOENT",
+		});
 	});
 });
 

@@ -4,10 +4,14 @@ import { getGitWorkspaceRoot } from "./getGitWorkspaceRoot";
 /**
  * Git の実行失敗を通知する。Git 自体が見つからない (ENOENT) 場合は導入を案内し、
  * それ以外は `<prefix>: <エラーの先頭 100 文字>` を表示する。
+ *
+ * Git の失敗のメッセージには `-C <フォルダー>` のパスが入るため、エラーコードがあればそれで
+ * 判定する (起動失敗は文字列の "ENOENT"、Git の異常終了は数値の終了コード)。
  */
 export function showGitCommandError(prefix: string, error: unknown): void {
 	const message = error instanceof Error ? error.message : String(error);
-	if (message.includes("ENOENT")) {
+	const code = (error as NodeJS.ErrnoException | undefined)?.code;
+	if (code === undefined ? message.includes("ENOENT") : code === "ENOENT") {
 		vscode.window.showErrorMessage(
 			"Git command not found. Please install Git and ensure it's in your PATH.",
 		);

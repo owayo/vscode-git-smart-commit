@@ -291,6 +291,44 @@ describe("getGitWorkspaceRoot", () => {
 		).rejects.toThrow("unsafe repository");
 	});
 
+	it("フォルダー名に 'not a git repository' を含むだけの別のエラーで次の候補へ進まない", async () => {
+		// Node.js のメッセージには `Command failed: git -C <フォルダー> ...` の行が入る。
+		// 所有権の拒否を「管理外」と取り違えて次のリポジトリでコミットしないよう、
+		// Git の診断の行頭だけを照合することを固定する。
+		const folder = "/workspace/not a git repository notes";
+		mockExecFileSync.mockImplementationOnce(() => {
+			throw new Error(
+				`Command failed: ${GIT_COMMAND} -C ${folder} rev-parse --show-toplevel\nfatal: detected dubious ownership in repository at '${folder}'`,
+			);
+		});
+
+		await expect(
+			getGitWorkspaceRoot([
+				{ uri: { fsPath: folder } },
+				{ uri: { fsPath: "/workspace/other" } },
+			] as never),
+		).rejects.toThrow("dubious ownership");
+		// 次の候補 (/workspace/other) では Git を起動しない
+		expect(mockExecFileSync).toHaveBeenCalledTimes(1);
+	});
+
+	it("Git の診断が行頭にある 'not a git repository' は管理外として次の候補へ進む", async () => {
+		mockExecFileSync
+			.mockImplementationOnce(() => {
+				throw new Error(
+					`Command failed: ${GIT_COMMAND} -C /workspace/plain rev-parse --show-toplevel\nfatal: not a git repository (or any of the parent directories): .git`,
+				);
+			})
+			.mockReturnValueOnce("/workspace/repo\n");
+
+		await expect(
+			getGitWorkspaceRoot([
+				{ uri: { fsPath: "/workspace/plain" } },
+				{ uri: { fsPath: "/workspace/repo" } },
+			] as never),
+		).resolves.toBe("/workspace/repo");
+	});
+
 	it("should handle case-insensitive 'not a git repository' error", async () => {
 		mockExecFileSync.mockImplementation(() => {
 			throw new Error("fatal: Not A Git Repository (or any parent)");
