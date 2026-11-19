@@ -1,7 +1,6 @@
-import { statSync } from "node:fs";
-import { execFileSync } from "child_process";
+import { stat } from "node:fs/promises";
 import type * as vscode from "vscode";
-import { resolveGitExecutable } from "./gitExecutable";
+import { execGit, resolveGitExecutable } from "./gitExecutable";
 
 /** git rev-parse が「Git 管理外」として返すエラーかどうかを判定する */
 function isNotGitRepositoryError(error: unknown): boolean {
@@ -37,20 +36,36 @@ function stripGitTrailingLineTerminator(output: string): string {
 	return output.slice(0, -1);
 }
 
-export function getGitWorkspaceRoot(
+/**
+ * 候補がディレクトリとして存在するかを調べる。削除済み (ENOENT) と、途中の要素が
+ * ファイルになったパス (ENOTDIR) は存在しないものとして扱い、権限エラー等は伝える。
+ */
+async function isExistingDirectory(fsPath: string): Promise<boolean> {
+	try {
+		return (await stat(fsPath)).isDirectory();
+	} catch (error) {
+		const code = (error as NodeJS.ErrnoException | undefined)?.code;
+		if (code === "ENOENT" || code === "ENOTDIR") {
+			return false;
+		}
+		throw error;
+	}
+}
+
+export async function getGitWorkspaceRoot(
 	workspaceFolders: readonly vscode.WorkspaceFolder[],
 	targetUri?: vscode.Uri,
-): string | null {
+): Promise<string | null> {
 	let gitCommand: string | undefined;
 	// SCM から明示された対象が無効でも、別のリポジトリへ切り替えてコミットしない。
 	const candidates = targetUri ? [{ uri: targetUri }] : workspaceFolders;
 
+	// 候補は先頭から 1 つずつ調べ、最初に見つかったリポジトリで止める。並列に起動すると、
+	// 先頭がリポジトリでも残りの候補まで Git を起動し、後ろの候補のエラーで止まる余地も生じる。
 	for (const folder of candidates) {
 		// 削除済み・ファイル化した候補を除外し、後続の正常なリポジトリを検出する。
 		// URI の scheme は限定せず、リモート拡張ホストで参照できる fsPath も扱う。
-		if (
-			!statSync(folder.uri.fsPath, { throwIfNoEntry: false })?.isDirectory()
-		) {
+		if (!(await isExistingDirectory(folder.uri.fsPath))) {
 			continue;
 		}
 		try {
@@ -60,14 +75,10 @@ export function getGitWorkspaceRoot(
 			// カレントディレクトリ配下の偽 `git.exe` を拾う余地があるため避ける。
 			// Git が末尾に付ける行終端だけを除去し、実在パス末尾の空白や CR は保持する。
 			const workspaceRoot = stripGitTrailingLineTerminator(
-				execFileSync(
+				await execGit(
 					gitCommand,
 					["-C", folder.uri.fsPath, "rev-parse", "--show-toplevel"],
-					{
-						encoding: "utf-8",
-						stdio: ["ignore", "pipe", "pipe"],
-						env: getGitEnglishEnv(),
-					},
+					{ env: getGitEnglishEnv() },
 				),
 			);
 

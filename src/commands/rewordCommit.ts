@@ -1,6 +1,5 @@
-import { execFileSync } from "child_process";
 import * as vscode from "vscode";
-import { resolveGitExecutable } from "./gitExecutable";
+import { execGit, resolveGitExecutable } from "./gitExecutable";
 import {
 	resolveCommandWorkspaceRoot,
 	showGitCommandError,
@@ -24,16 +23,21 @@ export interface CommitInfo {
 const GIT_LOG_SEPARATOR = "\x00";
 
 /** 到達可能なコミットの有無だけを調べ、判定不能なら元の履歴取得エラーを保持する。 */
-function hasReachableCommit(
+async function hasReachableCommit(
 	gitCommand: string,
 	workspaceRoot: string,
-): boolean | null {
+): Promise<boolean | null> {
 	try {
 		// 空かどうかの確認に全履歴を数えない。orphan HEAD でも他の ref は確認する。
-		const output = execFileSync(
-			gitCommand,
-			["-C", workspaceRoot, "rev-list", "--count", "--max-count=1", "--all"],
-			{ encoding: "utf-8" },
+		const output = (
+			await execGit(gitCommand, [
+				"-C",
+				workspaceRoot,
+				"rev-list",
+				"--count",
+				"--max-count=1",
+				"--all",
+			])
 		).trim();
 		return output === "0" ? false : output === "1" ? true : null;
 	} catch {
@@ -41,38 +45,32 @@ function hasReachableCommit(
 	}
 }
 
-export function getRecentCommits(
+export async function getRecentCommits(
 	workspaceRoot: string,
 	limit: number = 10,
-): CommitInfo[] {
+): Promise<CommitInfo[]> {
 	const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 10;
 	const gitCommand = resolveGitExecutable();
 	let output: string;
 	try {
 		// git 実行ファイルは絶対パスで起動し、対象リポジトリは `-C <dir>` で渡す。
 		// bare command と cwd 指定を組み合わせないことで、偽 `git.exe` の探索余地を断つ。
-		output = execFileSync(
-			gitCommand,
-			[
-				"-C",
-				workspaceRoot,
-				"log",
-				// log.showSignature の検証結果がハッシュ欄へ混入するのを防ぐ。
-				"--no-show-signature",
-				// i18n.logOutputEncoding (例: Shift_JIS) の設定に関わらず UTF-8 で出力させる。
-				// 指定しないと件名や作者名を UTF-8 として読んだときに文字化けする。
-				"--encoding=UTF-8",
-				// 実行用の完全なハッシュと表示用の短縮ハッシュを別々に受け取る。
-				"--format=format:%H%x00%h%x00%s%x00%cr%x00%an%x00",
-				"-n",
-				String(safeLimit),
-			],
-			{
-				encoding: "utf-8",
-			},
-		);
+		output = await execGit(gitCommand, [
+			"-C",
+			workspaceRoot,
+			"log",
+			// log.showSignature の検証結果がハッシュ欄へ混入するのを防ぐ。
+			"--no-show-signature",
+			// i18n.logOutputEncoding (例: Shift_JIS) の設定に関わらず UTF-8 で出力させる。
+			// 指定しないと件名や作者名を UTF-8 として読んだときに文字化けする。
+			"--encoding=UTF-8",
+			// 実行用の完全なハッシュと表示用の短縮ハッシュを別々に受け取る。
+			"--format=format:%H%x00%h%x00%s%x00%cr%x00%an%x00",
+			"-n",
+			String(safeLimit),
+		]);
 	} catch (error) {
-		if (hasReachableCommit(gitCommand, workspaceRoot) === false) {
+		if ((await hasReachableCommit(gitCommand, workspaceRoot)) === false) {
 			return [];
 		}
 		throw error;
@@ -112,7 +110,7 @@ export async function rewordCommit(
 	outputChannel: vscode.OutputChannel,
 	targetUri?: vscode.Uri,
 ): Promise<void> {
-	const workspaceRoot = resolveCommandWorkspaceRoot(targetUri);
+	const workspaceRoot = await resolveCommandWorkspaceRoot(targetUri);
 	if (!workspaceRoot) {
 		return;
 	}
@@ -120,7 +118,7 @@ export async function rewordCommit(
 	// 直近コミットを取得
 	let commits: CommitInfo[];
 	try {
-		commits = getRecentCommits(workspaceRoot, 15);
+		commits = await getRecentCommits(workspaceRoot, 15);
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		outputChannel.appendLine(

@@ -61,35 +61,35 @@ describe("実際の Git による履歴とワークスペース検出", () => {
 		if (root) rmSync(root, { recursive: true, force: true });
 	});
 
-	it("空リポジトリは空の履歴として返す", () => {
-		expect(getRecentCommits(empty)).toEqual([]);
+	it("空リポジトリは空の履歴として返す", async () => {
+		expect(await getRecentCommits(empty)).toEqual([]);
 	});
 
-	it("通常の履歴を新しい順で返す", () => {
-		expect(getRecentCommits(populated).map((commit) => commit.message)).toEqual(
-			["second", "first"],
-		);
-	});
-
-	it("SCM から指定されたリポジトリを先頭のワークスペースより優先する", () => {
+	it("通常の履歴を新しい順で返す", async () => {
 		expect(
-			getGitWorkspaceRoot(
+			(await getRecentCommits(populated)).map((commit) => commit.message),
+		).toEqual(["second", "first"]);
+	});
+
+	it("SCM から指定されたリポジトリを先頭のワークスペースより優先する", async () => {
+		expect(
+			await getGitWorkspaceRoot(
 				[{ uri: { fsPath: empty } }] as never,
 				{ fsPath: populated } as never,
 			),
 		).toBe(git(populated, ["rev-parse", "--show-toplevel"]).trim());
 	});
 
-	it("SCM の対象が削除済みでも別のリポジトリを選ばない", () => {
+	it("SCM の対象が削除済みでも別のリポジトリを選ばない", async () => {
 		expect(
-			getGitWorkspaceRoot(
+			await getGitWorkspaceRoot(
 				[{ uri: { fsPath: populated } }] as never,
 				{ fsPath: join(root, "missing-scm-repository") } as never,
 			),
 		).toBeNull();
 	});
 
-	it("署名表示が有効でも検証結果をコミットハッシュへ混入させない", () => {
+	it("署名表示が有効でも検証結果をコミットハッシュへ混入させない", async () => {
 		const signed = join(root, "signed");
 		mkdirSync(signed);
 		git(signed, ["init", "-b", "main"]);
@@ -120,7 +120,7 @@ describe("実際の Git による履歴とワークスペース検出", () => {
 			process.platform === "win32" ? "NUL" : "/dev/null",
 		]);
 
-		const commits = getRecentCommits(signed);
+		const commits = await getRecentCommits(signed);
 		expect(commits).toHaveLength(1);
 		expect(commits[0]?.hash).toBe(git(signed, ["rev-parse", "HEAD"]).trim());
 		expect(commits[0]?.shortHash).toBe(
@@ -130,7 +130,7 @@ describe("実際の Git による履歴とワークスペース検出", () => {
 		expect(commits[0]?.author).toBe("Test Author");
 	});
 
-	it("短縮ハッシュと同名のタグがあっても、選んだコミットに解決できるハッシュを返す", () => {
+	it("短縮ハッシュと同名のタグがあっても、選んだコミットに解決できるハッシュを返す", async () => {
 		const ambiguous = join(root, "ambiguous");
 		mkdirSync(ambiguous);
 		git(ambiguous, ["init", "-b", "main"]);
@@ -163,7 +163,7 @@ describe("実際の Git による履歴とワークスペース検出", () => {
 			]).trim(),
 		).toBe(other);
 
-		const selected = getRecentCommits(ambiguous).find(
+		const selected = (await getRecentCommits(ambiguous)).find(
 			(commit) => commit.message === "target",
 		);
 
@@ -180,7 +180,7 @@ describe("実際の Git による履歴とワークスペース検出", () => {
 		).toBe(target);
 	});
 
-	it("i18n.logOutputEncoding が UTF-8 以外でも件名と作者名を文字化けさせない", () => {
+	it("i18n.logOutputEncoding が UTF-8 以外でも件名と作者名を文字化けさせない", async () => {
 		const encoded = join(root, "encoded");
 		mkdirSync(encoded);
 		git(encoded, ["init", "-b", "main"]);
@@ -196,17 +196,17 @@ describe("実際の Git による履歴とワークスペース検出", () => {
 		]);
 		git(encoded, ["config", "i18n.logOutputEncoding", "Shift_JIS"]);
 
-		const commits = getRecentCommits(encoded);
+		const commits = await getRecentCommits(encoded);
 
 		expect(commits).toHaveLength(1);
 		expect(commits[0]?.message).toBe("日本語の件名");
 		expect(commits[0]?.author).toBe("山田");
 	});
 
-	it("orphan HEAD に他の ref の履歴があれば元の git log エラーを保持する", () => {
+	it("orphan HEAD に他の ref の履歴があれば元の git log エラーを保持する", async () => {
 		git(populated, ["symbolic-ref", "HEAD", "refs/heads/unborn"]);
 		try {
-			expect(() => getRecentCommits(populated)).toThrow(
+			await expect(getRecentCommits(populated)).rejects.toThrow(
 				/does not have any commits yet|bad default revision/,
 			);
 		} finally {
@@ -214,11 +214,11 @@ describe("実際の Git による履歴とワークスペース検出", () => {
 		}
 	});
 
-	it("削除済みとファイル化した候補の後にある正常なリポジトリを検出する", () => {
+	it("削除済みとファイル化した候補の後にある正常なリポジトリを検出する", async () => {
 		const file = join(root, "file");
 		writeFileSync(file, "test");
 		expect(
-			getGitWorkspaceRoot([
+			await getGitWorkspaceRoot([
 				{ uri: { fsPath: join(root, "missing") } },
 				{ uri: { fsPath: file } },
 				{ uri: { fsPath: populated, scheme: "vscode-remote" } },

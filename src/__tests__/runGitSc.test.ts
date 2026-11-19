@@ -194,7 +194,8 @@ describe("runGitSc", () => {
 					{},
 					targetUri as never,
 				);
-				proc.__emit("close", 0);
+				// リポジトリの検出は非同期なので、spawn の後に終了を発火する
+				setTimeout(() => proc.__emit("close", 0), 10);
 				await promise;
 				expect(mockGetGitWorkspaceRoot).toHaveBeenCalledWith([], targetUri);
 				expect(mockSpawn).toHaveBeenCalledOnce();
@@ -2280,6 +2281,8 @@ describe("runGitSc", () => {
 			const progressPromise = runGitSc(mockOutputChannel as never, {
 				autoConfirm: true,
 			});
+			// リポジトリの検出は非同期なので、spawn されるまで待ってからキャンセルする
+			await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalled());
 			cancelHandler?.();
 			proc.__emit("error", new Error("terminated during cancellation"));
 			await progressPromise;
@@ -2444,8 +2447,9 @@ describe("runGitSc", () => {
 		const proc = createMockProcess();
 		mockSpawn.mockReturnValue(proc);
 
-		// spawn は withProgress コールバック内で同期的に行われ、active map に登録される
+		// リポジトリの検出は非同期なので、spawn されて active map に登録されるまで待つ
 		const promise = runGitSc(mockOutputChannel as never, { autoConfirm: true });
+		await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalled());
 
 		// deactivate 相当: 実行中プロセスを一括終了する
 		terminateActiveGitScProcesses(mockOutputChannel as never);
@@ -2496,6 +2500,7 @@ describe("runGitSc", () => {
 			const promise = runGitSc(mockOutputChannel as never, {
 				autoConfirm: true,
 			});
+			await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalled());
 
 			terminateActiveGitScProcesses(mockOutputChannel as never);
 

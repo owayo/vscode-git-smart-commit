@@ -32,10 +32,31 @@ const mockExecuteCommand = vi.fn();
 const mockOpenExternal = vi.fn();
 const mockParseUri = vi.fn((url: string) => url);
 
-vi.mock("child_process", () => ({
-	execFileSync: vi.fn(),
-	spawn: (...args: unknown[]) => mockSpawn(...args),
-}));
+vi.mock("child_process", () => {
+	// コードは Git を execFile で非同期に実行する。テストでは戻り値や例外を同期のモック
+	// (execFileSync) で指定できるよう、execFile の呼び出しをこのモックへ橋渡しする。
+	const execFileSync = vi.fn();
+	return {
+		execFileSync,
+		execFile: (
+			file: string,
+			args: readonly string[],
+			options: unknown,
+			callback: (error: Error | null, stdout: string, stderr: string) => void,
+		) => {
+			let stdout: string;
+			try {
+				stdout = execFileSync(file, args, options);
+			} catch (error) {
+				callback(error as Error, "", "");
+				return { stdin: null };
+			}
+			callback(null, stdout, "");
+			return { stdin: null };
+		},
+		spawn: (...args: unknown[]) => mockSpawn(...args),
+	};
+});
 
 vi.mock("../commands/getGitWorkspaceRoot", () => ({
 	getGitWorkspaceRoot: (...args: unknown[]) => mockGetGitWorkspaceRoot(...args),
@@ -123,12 +144,12 @@ describe("getRecentCommits", () => {
 		mockResolveWindowsSystemExecutable.mockReturnValue(TASKKILL_COMMAND);
 	});
 
-	it("should parse git log output correctly", () => {
+	it("should parse git log output correctly", async () => {
 		mockExecFileSync.mockReturnValue(
 			`${FULL_HASH_ABC1234}\x00abc1234\x00feat: add new feature\x002 hours ago\x00John Doe\x00${FULL_HASH_DEF5678}\x00def5678\x00fix: resolve bug\x001 day ago\x00Jane Smith\x00`,
 		);
 
-		const commits = getRecentCommits("/workspace");
+		const commits = await getRecentCommits("/workspace");
 
 		expect(commits).toHaveLength(2);
 		expect(commits[0]).toEqual<CommitInfo>({
@@ -149,24 +170,26 @@ describe("getRecentCommits", () => {
 		});
 	});
 
-	it("should throw on git log error", () => {
+	it("should throw on git log error", async () => {
 		mockExecFileSync.mockImplementation(() => {
 			throw new Error("not a git repository");
 		});
 
-		expect(() => getRecentCommits("/not-a-repo")).toThrow(
+		await expect(getRecentCommits("/not-a-repo")).rejects.toThrow(
 			"not a git repository",
 		);
 	});
 
-	it("should throw ENOENT before git log when safe git executable cannot be resolved", () => {
+	it("should throw ENOENT before git log when safe git executable cannot be resolved", async () => {
 		mockResolveNativeExecutableOnPath.mockReturnValue(null);
 
-		expect(() => getRecentCommits("/workspace")).toThrow("spawn git ENOENT");
+		await expect(getRecentCommits("/workspace")).rejects.toThrow(
+			"spawn git ENOENT",
+		);
 		expect(mockExecFileSync).not.toHaveBeenCalled();
 	});
 
-	it("should return empty array when repository has no commits yet", () => {
+	it("should return empty array when repository has no commits yet", async () => {
 		mockExecFileSync
 			.mockImplementationOnce(() => {
 				throw new Error(
@@ -175,7 +198,7 @@ describe("getRecentCommits", () => {
 			})
 			.mockReturnValueOnce("0\n");
 
-		const commits = getRecentCommits("/workspace");
+		const commits = await getRecentCommits("/workspace");
 
 		expect(commits).toEqual([]);
 		expect(mockExecFileSync).toHaveBeenNthCalledWith(
@@ -192,7 +215,7 @@ describe("getRecentCommits", () => {
 		);
 	});
 
-	it("should rethrow the original git log error when empty-history probe fails", () => {
+	it("should rethrow the original git log error when empty-history probe fails", async () => {
 		mockExecFileSync
 			.mockImplementationOnce(() => {
 				throw new Error("fatal: bad revision 'HEAD'");
@@ -201,7 +224,7 @@ describe("getRecentCommits", () => {
 				throw new Error("spawn git ENOENT");
 			});
 
-		expect(() => getRecentCommits("/workspace")).toThrow(
+		await expect(getRecentCommits("/workspace")).rejects.toThrow(
 			"fatal: bad revision 'HEAD'",
 		);
 		expect(mockExecFileSync).toHaveBeenNthCalledWith(
@@ -218,19 +241,19 @@ describe("getRecentCommits", () => {
 		);
 	});
 
-	it("should return empty array for empty output", () => {
+	it("should return empty array for empty output", async () => {
 		mockExecFileSync.mockReturnValue("");
 
-		const commits = getRecentCommits("/workspace");
+		const commits = await getRecentCommits("/workspace");
 		expect(commits).toEqual([]);
 	});
 
-	it("should respect the limit parameter", () => {
+	it("should respect the limit parameter", async () => {
 		mockExecFileSync.mockReturnValue(
 			`${FULL_HASH_ABC1234}\x00abc1234\x00msg\x001h ago\x00Author\x00`,
 		);
 
-		getRecentCommits("/workspace", 5);
+		await getRecentCommits("/workspace", 5);
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
 			GIT_COMMAND,
@@ -239,12 +262,12 @@ describe("getRecentCommits", () => {
 		);
 	});
 
-	it("should use default limit of 10", () => {
+	it("should use default limit of 10", async () => {
 		mockExecFileSync.mockReturnValue(
 			`${FULL_HASH_ABC1234}\x00abc1234\x00msg\x001h ago\x00Author\x00`,
 		);
 
-		getRecentCommits("/workspace");
+		await getRecentCommits("/workspace");
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
 			GIT_COMMAND,
@@ -253,12 +276,12 @@ describe("getRecentCommits", () => {
 		);
 	});
 
-	it("should fallback to default limit when non-positive limit is passed", () => {
+	it("should fallback to default limit when non-positive limit is passed", async () => {
 		mockExecFileSync.mockReturnValue(
 			`${FULL_HASH_ABC1234}\x00abc1234\x00msg\x001h ago\x00Author\x00`,
 		);
 
-		getRecentCommits("/workspace", 0);
+		await getRecentCommits("/workspace", 0);
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
 			GIT_COMMAND,
@@ -267,57 +290,57 @@ describe("getRecentCommits", () => {
 		);
 	});
 
-	it("should keep commit subjects that include pipes", () => {
+	it("should keep commit subjects that include pipes", async () => {
 		mockExecFileSync.mockReturnValue(
 			`${FULL_HASH_ABC1234}\x00abc1234\x00feat: support A|B|C\x001h ago\x00Author\x00`,
 		);
 
-		const commits = getRecentCommits("/workspace");
+		const commits = await getRecentCommits("/workspace");
 		expect(commits).toHaveLength(1);
 		expect(commits[0].message).toBe("feat: support A|B|C");
 	});
 
-	it("should keep commit subjects that include field separators", () => {
+	it("should keep commit subjects that include field separators", async () => {
 		mockExecFileSync.mockReturnValue(
 			`${FULL_HASH_ABC1234}\x00abc1234\x00feat: support A\x1fB\x001h ago\x00Author\x00`,
 		);
 
-		const commits = getRecentCommits("/workspace");
+		const commits = await getRecentCommits("/workspace");
 		expect(commits).toHaveLength(1);
 		expect(commits[0].message).toBe("feat: support A\x1fB");
 		expect(commits[0].date).toBe("1h ago");
 		expect(commits[0].author).toBe("Author");
 	});
 
-	it("should keep commit subjects that include record separators", () => {
+	it("should keep commit subjects that include record separators", async () => {
 		mockExecFileSync.mockReturnValue(
 			`${FULL_HASH_ABC1234}\x00abc1234\x00feat: support A\x1eB\x001h ago\x00Author\x00`,
 		);
 
-		const commits = getRecentCommits("/workspace");
+		const commits = await getRecentCommits("/workspace");
 		expect(commits).toHaveLength(1);
 		expect(commits[0].message).toBe("feat: support A\x1eB");
 		expect(commits[0].date).toBe("1h ago");
 		expect(commits[0].author).toBe("Author");
 	});
 
-	it("should use 1-based index for git-sc --reword", () => {
+	it("should use 1-based index for git-sc --reword", async () => {
 		mockExecFileSync.mockReturnValue(
 			`${FULL_HASH_ABC1234}\x00abc\x00first\x001h ago\x00A\x00${FULL_HASH_DEF5678}\x00def\x00second\x002h ago\x00B\x00${"9".repeat(40)}\x00ghi\x00third\x003h ago\x00C\x00`,
 		);
 
-		const commits = getRecentCommits("/workspace");
+		const commits = await getRecentCommits("/workspace");
 		expect(commits[0].index).toBe(1);
 		expect(commits[1].index).toBe(2);
 		expect(commits[2].index).toBe(3);
 	});
 
-	it("should fallback to default limit when negative limit is passed", () => {
+	it("should fallback to default limit when negative limit is passed", async () => {
 		mockExecFileSync.mockReturnValue(
 			`${FULL_HASH_ABC1234}\x00abc1234\x00msg\x001h ago\x00Author\x00`,
 		);
 
-		getRecentCommits("/workspace", -5);
+		await getRecentCommits("/workspace", -5);
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
 			GIT_COMMAND,
@@ -326,12 +349,12 @@ describe("getRecentCommits", () => {
 		);
 	});
 
-	it("should fallback to default limit when float is passed", () => {
+	it("should fallback to default limit when float is passed", async () => {
 		mockExecFileSync.mockReturnValue(
 			`${FULL_HASH_ABC1234}\x00abc1234\x00msg\x001h ago\x00Author\x00`,
 		);
 
-		getRecentCommits("/workspace", 3.5);
+		await getRecentCommits("/workspace", 3.5);
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
 			GIT_COMMAND,
@@ -340,12 +363,12 @@ describe("getRecentCommits", () => {
 		);
 	});
 
-	it("should fallback to default limit when NaN is passed", () => {
+	it("should fallback to default limit when NaN is passed", async () => {
 		mockExecFileSync.mockReturnValue(
 			`${FULL_HASH_ABC1234}\x00abc1234\x00msg\x001h ago\x00Author\x00`,
 		);
 
-		getRecentCommits("/workspace", Number.NaN);
+		await getRecentCommits("/workspace", Number.NaN);
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
 			GIT_COMMAND,
@@ -354,14 +377,14 @@ describe("getRecentCommits", () => {
 		);
 	});
 
-	it("should trim newline from hash when format: inserts separator between commits", () => {
+	it("should trim newline from hash when format: inserts separator between commits", async () => {
 		// format: はコミット間に改行セパレータを挿入するため、
 		// 2番目以降のハッシュ先頭に混入する改行だけを除去する回帰テスト
 		mockExecFileSync.mockReturnValue(
 			`${FULL_HASH_ABC1234}\x00abc1234\x00first\x001h ago\x00Alice\x00\n${FULL_HASH_DEF5678}\x00def5678\x00second\x002h ago\x00Bob\x00`,
 		);
 
-		const commits = getRecentCommits("/workspace");
+		const commits = await getRecentCommits("/workspace");
 
 		expect(commits).toHaveLength(2);
 		expect(commits[0].hash).toBe(FULL_HASH_ABC1234);
@@ -369,12 +392,12 @@ describe("getRecentCommits", () => {
 		expect(commits[1].shortHash).toBe("def5678");
 	});
 
-	it("should use format: prefix to avoid tformat terminator newlines", () => {
+	it("should use format: prefix to avoid tformat terminator newlines", async () => {
 		mockExecFileSync.mockReturnValue(
 			`${FULL_HASH_ABC1234}\x00abc1234\x00msg\x001h ago\x00Author\x00`,
 		);
 
-		getRecentCommits("/workspace", 5);
+		await getRecentCommits("/workspace", 5);
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
 			GIT_COMMAND,
@@ -383,7 +406,7 @@ describe("getRecentCommits", () => {
 		);
 	});
 
-	it("should rethrow git log error when the history probe returns non-numeric output", () => {
+	it("should rethrow git log error when the history probe returns non-numeric output", async () => {
 		mockExecFileSync
 			.mockImplementationOnce(() => {
 				throw new Error("fatal: bad object HEAD");
@@ -391,12 +414,12 @@ describe("getRecentCommits", () => {
 			// rev-list が非数値を返す場合は判定不能として扱う
 			.mockReturnValueOnce("not-a-number\n");
 
-		expect(() => getRecentCommits("/workspace")).toThrow(
+		await expect(getRecentCommits("/workspace")).rejects.toThrow(
 			"fatal: bad object HEAD",
 		);
 	});
 
-	it("should rethrow git log error when repository has reachable commits", () => {
+	it("should rethrow git log error when repository has reachable commits", async () => {
 		mockExecFileSync
 			.mockImplementationOnce(() => {
 				throw new Error("fatal: bad default revision 'HEAD'");
@@ -404,14 +427,14 @@ describe("getRecentCommits", () => {
 			// rev-list が最初のコミットを検出した場合
 			.mockReturnValueOnce("1\n");
 
-		expect(() => getRecentCommits("/workspace")).toThrow(
+		await expect(getRecentCommits("/workspace")).rejects.toThrow(
 			"fatal: bad default revision 'HEAD'",
 		);
 	});
 
 	it.each(["1\n", "not-a-number\n", "", "0invalid\n", "-1\n"])(
 		"履歴の存在確認が %j を返したら元のエラーを保持する",
-		(probeOutput) => {
+		async (probeOutput) => {
 			const logError = new Error("fatal: bad object HEAD");
 			mockExecFileSync
 				.mockImplementationOnce(() => {
@@ -419,12 +442,12 @@ describe("getRecentCommits", () => {
 				})
 				.mockReturnValueOnce(probeOutput);
 
-			expect(() => getRecentCommits("/workspace")).toThrow(logError);
+			await expect(getRecentCommits("/workspace")).rejects.toThrow(logError);
 			expect(mockResolveNativeExecutableOnPath).toHaveBeenCalledTimes(1);
 		},
 	);
 
-	it("should strip newline separators from all hashes in 3+ commit output", () => {
+	it("should strip newline separators from all hashes in 3+ commit output", async () => {
 		// 実際の git log --format=format: 出力を再現: コミット間に \n が挿入される
 		const [hashA, hashB, hashC] = ["aaa1111", "bbb2222", "ccc3333"].map(
 			(shortHash) => shortHash.padEnd(40, "0"),
@@ -433,7 +456,7 @@ describe("getRecentCommits", () => {
 			`${hashA}\x00aaa1111\x00first\x001h ago\x00Alice\x00\n${hashB}\x00bbb2222\x00second\x002h ago\x00Bob\x00\n${hashC}\x00ccc3333\x00third\x003h ago\x00Carol\x00`,
 		);
 
-		const commits = getRecentCommits("/workspace");
+		const commits = await getRecentCommits("/workspace");
 
 		expect(commits).toHaveLength(3);
 		expect(commits.map((commit) => commit.hash)).toEqual([hashA, hashB, hashC]);
@@ -448,44 +471,44 @@ describe("getRecentCommits", () => {
 		expect(commits[2].author).toBe("Carol");
 	});
 
-	it("should handle single commit without newline separator issue", () => {
+	it("should handle single commit without newline separator issue", async () => {
 		mockExecFileSync.mockReturnValue(
 			`${FULL_HASH_ABC1234}\x00abc1234\x00feat: single\x001h ago\x00Author\x00`,
 		);
 
-		const commits = getRecentCommits("/workspace");
+		const commits = await getRecentCommits("/workspace");
 
 		expect(commits).toHaveLength(1);
 		expect(commits[0].hash).toBe(FULL_HASH_ABC1234);
 	});
 
-	it("should skip incomplete fields when output has fewer than 5 fields", () => {
+	it("should skip incomplete fields when output has fewer than 5 fields", async () => {
 		// 完全なハッシュ・短縮ハッシュ・件名のみ（日付・作者なし）→ コミットとして認識しない
 		mockExecFileSync.mockReturnValue(
 			`${FULL_HASH_ABC1234}\x00abc1234\x00partial message\x00`,
 		);
 
-		const commits = getRecentCommits("/workspace");
+		const commits = await getRecentCommits("/workspace");
 		expect(commits).toHaveLength(0);
 	});
 
-	it("should parse complete commits and ignore trailing incomplete fields", () => {
+	it("should parse complete commits and ignore trailing incomplete fields", async () => {
 		// 1件の完全なコミット + 不完全なフィールド
 		mockExecFileSync.mockReturnValue(
 			`${FULL_HASH_ABC1234}\x00abc1234\x00feat: complete\x002h ago\x00Author\x00${FULL_HASH_DEF5678}\x00def5678\x00orphan`,
 		);
 
-		const commits = getRecentCommits("/workspace");
+		const commits = await getRecentCommits("/workspace");
 		expect(commits).toHaveLength(1);
 		expect(commits[0].hash).toBe(FULL_HASH_ABC1234);
 	});
 
-	it("should fallback to default limit when Infinity is passed", () => {
+	it("should fallback to default limit when Infinity is passed", async () => {
 		mockExecFileSync.mockReturnValue(
 			`${FULL_HASH_ABC1234}\x00abc1234\x00msg\x001h ago\x00Author\x00`,
 		);
 
-		getRecentCommits("/workspace", Number.POSITIVE_INFINITY);
+		await getRecentCommits("/workspace", Number.POSITIVE_INFINITY);
 
 		expect(mockExecFileSync).toHaveBeenCalledWith(
 			GIT_COMMAND,
@@ -494,10 +517,10 @@ describe("getRecentCommits", () => {
 		);
 	});
 
-	it("should handle commit with empty fields gracefully", () => {
+	it("should handle commit with empty fields gracefully", async () => {
 		mockExecFileSync.mockReturnValue("\x00\x00\x00\x00\x00");
 
-		const commits = getRecentCommits("/workspace");
+		const commits = await getRecentCommits("/workspace");
 		expect(commits).toHaveLength(1);
 		expect(commits[0]).toEqual({
 			index: 1,

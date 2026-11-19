@@ -13,7 +13,7 @@ export async function runGitSc(
 	options: GitScOptions = {},
 	targetUri?: vscode.Uri,
 ): Promise<void> {
-	const workspaceRoot = resolveCommandWorkspaceRoot(targetUri);
+	const workspaceRoot = await resolveCommandWorkspaceRoot(targetUri);
 	if (!workspaceRoot) {
 		return;
 	}

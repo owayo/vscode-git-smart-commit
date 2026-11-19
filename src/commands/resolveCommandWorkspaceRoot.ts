@@ -23,9 +23,9 @@ export function showGitCommandError(prefix: string, error: unknown): void {
  * 先頭から調べる。commit と reword の両フローで同じ判定と通知を使うため、ここに集約する。
  * 解決できなかった場合は理由を通知して null を返す。
  */
-export function resolveCommandWorkspaceRoot(
+export async function resolveCommandWorkspaceRoot(
 	targetUri?: vscode.Uri,
-): string | null {
+): Promise<string | null> {
 	const workspaceFolders = vscode.workspace.workspaceFolders;
 
 	if (!targetUri && (!workspaceFolders || workspaceFolders.length === 0)) {
@@ -35,7 +35,10 @@ export function resolveCommandWorkspaceRoot(
 
 	let workspaceRoot: string | null;
 	try {
-		workspaceRoot = getGitWorkspaceRoot(workspaceFolders ?? [], targetUri);
+		workspaceRoot = await getGitWorkspaceRoot(
+			workspaceFolders ?? [],
+			targetUri,
+		);
 	} catch (error) {
 		showGitCommandError("Failed to detect Git repository", error);
 		return null;
